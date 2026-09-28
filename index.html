@@ -242,9 +242,11 @@
   .file-actions label { margin: 0; text-align: center; cursor: pointer; }
   .week-grid { display: grid; gap: 8px; margin-top: 10px; }
   .week-row { display: grid; grid-template-columns: 74px 82px 1fr; gap: 8px; align-items: center; }
-  .week-row .day { font-size: 13px; line-height: 1.25; font-weight: 750; }
+  .week-row .day { grid-row: 1 / 5; align-self: start; padding-top: 10px; font-size: 13px; line-height: 1.25; font-weight: 750; }
   .week-row .day small { display: block; color: var(--muted); font-weight: 500; }
   .week-row input, .week-row select { padding: 10px; min-width: 0; }
+  .week-row .week-hours2 { grid-column: 2; }
+  .week-row .week-site2 { grid-column: 3; }
   .week-row .week-note { grid-column: 2 / -1; }
   body.read-only .actions, body.read-only #settingsBtn { display: none; }
   .hidden { display: none !important; }
@@ -717,6 +719,11 @@ function entryById(id) {
 
 function openHours(existing) {
   const e = existing || { date: todayISO(), hours: "", minutes: "", note: "", rate: state.rate };
+  const secondSiteFields = existing ? "" :
+    '<label for="jobSite2">Second job site (optional)</label><select id="jobSite2" class="job-site-select">' + jobSiteOptions("") + '</select>' +
+    '<div class="split"><div><label for="hours2">Hours at second site</label><input id="hours2" inputmode="numeric" type="number" min="0" step="1" value=""></div>' +
+    '<div><label for="minutes2">Minutes</label><input id="minutes2" inputmode="numeric" type="number" min="0" max="59" step="1" value=""></div></div>' +
+    '<label for="note2">Second-site note (optional)</label><textarea id="note2" maxlength="240"></textarea>';
   openSheet(
     '<div class="grab"></div><h3>' + (existing ? "Edit hours" : "Log hours") + "</h3>" +
     '<label for="date">Date worked</label><input id="date" type="date" value="' + escapeHtml(e.date) + '">' +
@@ -726,9 +733,10 @@ function openHours(existing) {
     [4, 6, 7.5, 8, 10].map(n => '<button type="button" data-h="' + n + '">' + n + "h</button>").join("") +
     "</div>" +
     '<label for="rate">Rate for this day</label><input id="rate" inputmode="decimal" type="number" min="0" step="0.01" value="' + escapeHtml(e.rate) + '">' +
-    '<label for="jobSite">Job site</label><select id="jobSite" class="job-site-select">' + jobSiteOptions(e.jobSite || "") + '</select>' +
+    '<label for="jobSite">' + (existing ? "Job site" : "First job site") + '</label><select id="jobSite" class="job-site-select">' + jobSiteOptions(e.jobSite || "") + '</select>' +
     '<div class="chips"><button id="addJobSite" type="button">Add new job site</button></div>' +
-    '<label for="note">Note (optional)</label><textarea id="note" maxlength="240">' + escapeHtml(e.note || "") + "</textarea>" +
+    '<label for="note">' + (existing ? "Note (optional)" : "First-site note (optional)") + '</label><textarea id="note" maxlength="240">' + escapeHtml(e.note || "") + "</textarea>" +
+    secondSiteFields +
     '<div class="preview" id="preview"></div>' +
     '<div class="sheet-actions">' +
     '<button class="ghost" id="cancel" type="button">Cancel</button>' +
@@ -738,17 +746,22 @@ function openHours(existing) {
   );
   const hours = document.getElementById("hours");
   const minutes = document.getElementById("minutes");
+  const hours2 = document.getElementById("hours2");
+  const minutes2 = document.getElementById("minutes2");
   const rate = document.getElementById("rate");
   const preview = document.getElementById("preview");
   function paint() {
     const h = Number(hours.value) || 0;
     const m = Number(minutes.value) || 0;
+    const h2 = Number(hours2?.value) || 0;
+    const m2 = Number(minutes2?.value) || 0;
     const r = Number(rate.value) || 0;
-    const amt = round2((h + m / 60) * r);
-    preview.textContent = (h || m) && r ? "This day adds " + money(amt) : "Enter hours to see the amount";
+    const total = h + m / 60 + h2 + m2 / 60;
+    const amt = round2(total * r);
+    preview.textContent = total && r ? hoursLabel(total) + " · " + money(amt) : "Enter hours to see the amount";
   }
   paint();
-  [hours, minutes, rate].forEach(el => el.addEventListener("input", paint));
+  [hours, minutes, hours2, minutes2, rate].filter(Boolean).forEach(el => el.addEventListener("input", paint));
   document.getElementById("chips").addEventListener("click", (ev) => {
     const btn = ev.target.closest("button");
     if (!btn) return;
@@ -763,10 +776,18 @@ function openHours(existing) {
     const date = document.getElementById("date").value;
     const h = Number(hours.value) || 0;
     const m = Number(minutes.value) || 0;
+    const h2 = Number(hours2?.value) || 0;
+    const m2 = Number(minutes2?.value) || 0;
     const r = Number(rate.value);
     if (!date) return alert("Pick the date worked.");
     if (h < 0 || m < 0 || m > 59 || (h === 0 && m === 0)) return alert("Enter the hours worked.");
+    if (h2 < 0 || m2 < 0 || m2 > 59) return alert("Check the second job site's hours.");
     if (!(r > 0)) return alert("Rate needs to be more than zero.");
+    const firstSite = document.getElementById("jobSite").value;
+    const secondSite = document.getElementById("jobSite2")?.value || "";
+    if ((h2 || m2) && !secondSite) return alert("Choose the second job site.");
+    if (!(h2 || m2) && secondSite) return alert("Enter the hours worked at the second job site.");
+    if ((h2 || m2) && firstSite && firstSite === secondSite) return alert("Choose two different job sites.");
     const next = {
       id: existing ? existing.id : uid(),
       type: "hours",
@@ -775,11 +796,23 @@ function openHours(existing) {
       minutes: m,
       rate: round2(r),
       amount: round2((h + m / 60) * r),
-      jobSite: document.getElementById("jobSite").value,
+      jobSite: firstSite,
       note: document.getElementById("note").value.trim(),
       createdAt: existing ? existing.createdAt : Date.now()
     };
-    state.entries = existing ? state.entries.map(x => x.id === existing.id ? next : x) : state.entries.concat(next);
+    const second = (h2 || m2) ? {
+      id: uid(),
+      type: "hours",
+      date,
+      hours: h2,
+      minutes: m2,
+      rate: round2(r),
+      amount: round2((h2 + m2 / 60) * r),
+      jobSite: secondSite,
+      note: document.getElementById("note2").value.trim(),
+      createdAt: Date.now() + 1
+    } : null;
+    state.entries = existing ? state.entries.map(x => x.id === existing.id ? next : x) : state.entries.concat(second ? [next, second] : [next]);
     save(state);
     closeSheet();
     render();
@@ -800,7 +833,7 @@ function openWeek() {
     '<div class="grab"></div><h3>Log a whole week</h3>' +
     '<label for="weekStart">Week containing</label><input id="weekStart" type="date" value="' + initialMonday + '">' +
     '<label for="weekRate">Default rate for new days</label><input id="weekRate" inputmode="decimal" type="number" min="0" step="0.01" value="' + escapeHtml(state.rate) + '">' +
-    '<p class="fine">Enter decimal hours, such as 7.5. Blank days are skipped. Existing hours for this week are prefilled; clearing one removes that day when you save.</p>' +
+    '<p class="fine">Each day supports two job sites with separate decimal hours and notes. Blank lines are skipped. Existing hours are prefilled; clearing one removes that entry when you save.</p>' +
     '<div class="chips"><button id="addWeekSite" type="button">Add new job site</button></div>' +
     '<div class="week-grid" id="weekGrid"></div>' +
     '<div class="preview" id="weekPreview"></div>' +
@@ -821,11 +854,13 @@ function openWeek() {
     let totalHours = 0;
     let totalAmount = 0;
     grid.querySelectorAll(".week-row").forEach(row => {
-      const value = Number(row.querySelector(".week-hours").value) || 0;
-      const existingRate = Number(row.dataset.existingRate) || 0;
-      const rate = existingRate || Number(weekRate.value) || 0;
-      totalHours += value;
-      totalAmount += value * rate;
+      [1, 2].forEach(block => {
+        const value = Number(row.querySelector(".week-hours" + block).value) || 0;
+        const existingRate = Number(row.dataset["existingRate" + block]) || 0;
+        const rate = existingRate || Number(weekRate.value) || 0;
+        totalHours += value;
+        totalAmount += value * rate;
+      });
     });
     preview.textContent = totalHours > 0
       ? hoursLabel(totalHours) + " · " + money(totalAmount)
@@ -838,16 +873,21 @@ function openWeek() {
     dates = dayNames.map((_, index) => addDaysISO(monday, index));
     existingByDate = new Map(dates.map(date => [date, state.entries.filter(e => e.type === "hours" && e.date === date)]));
     grid.innerHTML = dates.map((date, index) => {
-      const existing = existingByDate.get(date) || [];
-      const value = existing.length ? Math.round(existing.reduce((sum, entry) => sum + hoursOf(entry), 0) * 100) / 100 : "";
-      const note = existing.map(entry => entry.note).filter(Boolean).join("; ");
-      const existingRate = existing.length ? Number(existing[0].rate) || state.rate : "";
-      const jobSite = existing.length ? existing[0].jobSite || "" : "";
-      return '<div class="week-row" data-date="' + date + '" data-existing-rate="' + escapeHtml(existingRate) + '">' +
+      const existing = (existingByDate.get(date) || []).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      const first = existing[0] || {};
+      const second = existing[1] || {};
+      const value1 = existing[0] ? Math.round(hoursOf(first) * 100) / 100 : "";
+      const value2 = existing[1] ? Math.round(hoursOf(second) * 100) / 100 : "";
+      const rate1 = existing[0] ? Number(first.rate) || state.rate : "";
+      const rate2 = existing[1] ? Number(second.rate) || state.rate : "";
+      return '<div class="week-row" data-date="' + date + '" data-existing-rate1="' + escapeHtml(rate1) + '" data-existing-rate2="' + escapeHtml(rate2) + '">' +
         '<div class="day">' + dayNames[index].slice(0, 3) + '<small>' + escapeHtml(prettyDate(date).replace(/^[^,]+,\s*/, "")) + '</small></div>' +
-        '<input class="week-hours" aria-label="' + dayNames[index] + ' hours" inputmode="decimal" type="number" min="0" max="24" step="0.25" value="' + escapeHtml(value) + '" placeholder="Hours">' +
-        '<select class="week-site job-site-select" aria-label="' + dayNames[index] + ' job site">' + jobSiteOptions(jobSite) + '</select>' +
-        '<input class="week-note" aria-label="' + dayNames[index] + ' note" type="text" maxlength="120" value="' + escapeHtml(note) + '" placeholder="Note (optional)">' +
+        '<input class="week-hours1" aria-label="' + dayNames[index] + ' site 1 hours" inputmode="decimal" type="number" min="0" max="24" step="0.25" value="' + escapeHtml(value1) + '" placeholder="Hours 1">' +
+        '<select class="week-site1 job-site-select" aria-label="' + dayNames[index] + ' job site 1">' + jobSiteOptions(first.jobSite || "") + '</select>' +
+        '<input class="week-note week-note1" aria-label="' + dayNames[index] + ' site 1 note" type="text" maxlength="120" value="' + escapeHtml(first.note || "") + '" placeholder="Site 1 note (optional)">' +
+        '<input class="week-hours2" aria-label="' + dayNames[index] + ' site 2 hours" inputmode="decimal" type="number" min="0" max="24" step="0.25" value="' + escapeHtml(value2) + '" placeholder="Hours 2">' +
+        '<select class="week-site2 job-site-select" aria-label="' + dayNames[index] + ' job site 2">' + jobSiteOptions(second.jobSite || "") + '</select>' +
+        '<input class="week-note week-note2" aria-label="' + dayNames[index] + ' site 2 note" type="text" maxlength="120" value="' + escapeHtml(second.note || "") + '" placeholder="Site 2 note (optional)">' +
         '</div>';
     }).join("");
     grid.querySelectorAll("input").forEach(input => input.addEventListener("input", paintSummary));
@@ -862,39 +902,52 @@ function openWeek() {
     const defaultRate = Number(weekRate.value);
     if (!(defaultRate > 0)) return alert("Rate needs to be more than zero.");
     const nextHours = [];
+    const overflowHours = [];
     let invalid = false;
     grid.querySelectorAll(".week-row").forEach(row => {
-      const input = row.querySelector(".week-hours");
-      const raw = input.value.trim();
-      if (!raw) return;
-      const decimal = Number(raw);
-      if (!(decimal > 0) || decimal > 24) {
-        invalid = true;
-        return;
-      }
-      const totalMinutes = Math.round(decimal * 60);
       const date = row.dataset.date;
-      const existing = existingByDate.get(date) || [];
-      const rate = Number(row.dataset.existingRate) > 0 ? Number(row.dataset.existingRate) : defaultRate;
-      nextHours.push({
-        id: existing[0]?.id || uid(),
-        type: "hours",
-        date,
-        hours: Math.floor(totalMinutes / 60),
-        minutes: totalMinutes % 60,
-        rate: round2(rate),
-        amount: round2(totalMinutes / 60 * rate),
-        jobSite: row.querySelector(".week-site").value,
-        note: row.querySelector(".week-note").value.trim(),
-        createdAt: existing[0]?.createdAt || Date.now()
+      const existing = (existingByDate.get(date) || []).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      overflowHours.push(...existing.slice(2));
+      const values = [1, 2].map(block => ({
+        block,
+        raw: row.querySelector(".week-hours" + block).value.trim(),
+        site: row.querySelector(".week-site" + block).value
+      }));
+      if (values[0].raw && values[1].raw && values[0].site && values[0].site === values[1].site) invalid = true;
+      if (values.reduce((sum, value) => sum + (Number(value.raw) || 0), 0) > 24) invalid = true;
+      values.forEach(({ block, raw, site }) => {
+        if (!raw) {
+          if (site) invalid = true;
+          return;
+        }
+        const decimal = Number(raw);
+        const prior = existing[block - 1];
+        if (!(decimal > 0) || decimal > 24 || (!site && !prior)) {
+          invalid = true;
+          return;
+        }
+        const totalMinutes = Math.round(decimal * 60);
+        const rate = Number(row.dataset["existingRate" + block]) > 0 ? Number(row.dataset["existingRate" + block]) : defaultRate;
+        nextHours.push({
+          id: prior?.id || uid(),
+          type: "hours",
+          date,
+          hours: Math.floor(totalMinutes / 60),
+          minutes: totalMinutes % 60,
+          rate: round2(rate),
+          amount: round2(totalMinutes / 60 * rate),
+          jobSite: site,
+          note: row.querySelector(".week-note" + block).value.trim(),
+          createdAt: prior?.createdAt || Date.now() + block
+        });
       });
     });
-    if (invalid) return alert("Each day must be more than 0 and no more than 24 hours.");
+    if (invalid) return alert("Each filled line needs a job site and valid hours. Use different sites, and keep the day's combined total at 24 hours or less.");
     if (!nextHours.length && !dates.some(date => (existingByDate.get(date) || []).length)) return alert("Enter hours for at least one day.");
     const existingDays = dates.filter(date => (existingByDate.get(date) || []).length).length;
     if (existingDays && !confirm("This will replace the existing hours on " + existingDays + " day" + (existingDays === 1 ? "" : "s") + " in this week. Continue?")) return;
     const weekDates = new Set(dates);
-    state.entries = state.entries.filter(entry => entry.type !== "hours" || !weekDates.has(entry.date)).concat(nextHours);
+    state.entries = state.entries.filter(entry => entry.type !== "hours" || !weekDates.has(entry.date)).concat(nextHours, overflowHours);
     save(state);
     closeSheet();
     render();

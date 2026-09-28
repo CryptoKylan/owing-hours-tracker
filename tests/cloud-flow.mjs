@@ -17,23 +17,45 @@ try {
   await page.getByRole("button", { name: "Log week", exact: true }).click();
   page.once("dialog", dialog => dialog.accept("Site Alpha"));
   await page.getByRole("button", { name: "Add new job site", exact: true }).click();
-  await page.getByLabel("Monday hours").fill("6.5");
-  await page.getByLabel("Monday job site").selectOption("Site Alpha");
-  await page.getByLabel("Monday note").fill("Weekly cloud test");
-  await page.getByLabel("Tuesday hours").fill("7.25");
+  page.once("dialog", dialog => dialog.accept("Site Beta"));
+  await page.getByRole("button", { name: "Add new job site", exact: true }).click();
+  await page.getByLabel("Monday site 1 hours").fill("4");
+  await page.getByLabel("Monday job site 1").selectOption("Site Alpha");
+  await page.getByLabel("Monday site 1 note").fill("Morning site");
+  await page.getByLabel("Monday site 2 hours").fill("2.5");
+  await page.getByLabel("Monday job site 2").selectOption("Site Beta");
+  await page.getByLabel("Monday site 2 note").fill("Afternoon site");
+  await page.getByLabel("Tuesday site 1 hours").fill("7.25");
+  await page.getByLabel("Tuesday job site 1").selectOption("Site Alpha");
   await page.getByRole("button", { name: "Save week", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("#cloudStatus")?.textContent === "Saved to cloud");
 
   await page.getByRole("button", { name: "Log week", exact: true }).click();
-  if (await page.getByLabel("Monday hours").inputValue() !== "6.5") throw new Error("Weekly editor did not prefill saved hours.");
-  if (await page.getByLabel("Monday job site").inputValue() !== "Site Alpha") throw new Error("Weekly editor did not preserve the job site.");
-  await page.getByLabel("Monday hours").fill("8");
-  await page.getByLabel("Tuesday hours").fill("");
+  if (await page.getByLabel("Monday site 1 hours").inputValue() !== "4") throw new Error("Weekly editor did not prefill first-site hours.");
+  if (await page.getByLabel("Monday site 2 hours").inputValue() !== "2.5") throw new Error("Weekly editor did not prefill second-site hours.");
+  if (await page.getByLabel("Monday job site 1").inputValue() !== "Site Alpha") throw new Error("Weekly editor did not preserve the first job site.");
+  if (await page.getByLabel("Monday job site 2").inputValue() !== "Site Beta") throw new Error("Weekly editor did not preserve the second job site.");
+  await page.getByLabel("Monday site 1 hours").fill("5");
+  await page.getByLabel("Monday site 2 hours").fill("3");
+  await page.getByLabel("Tuesday site 1 hours").fill("");
+  await page.getByLabel("Tuesday job site 1").selectOption("");
   page.once("dialog", dialog => dialog.accept());
   await page.getByRole("button", { name: "Save week", exact: true }).click();
   const weekRows = await page.locator(".row .meta").allInnerTexts();
-  if (!weekRows.some(text => text.startsWith("8 hrs"))) throw new Error("Weekly editor did not update Monday.");
+  if (!weekRows.some(text => text.startsWith("5 hrs") && text.includes("Site Alpha"))) throw new Error("Weekly editor did not update the first site.");
+  if (!weekRows.some(text => text.startsWith("3 hrs") && text.includes("Site Beta"))) throw new Error("Weekly editor did not update the second site.");
   if (weekRows.some(text => text.startsWith("7h 15m"))) throw new Error("Weekly editor did not clear Tuesday.");
+
+  await page.getByRole("button", { name: "Log hours", exact: true }).click();
+  await page.locator("#date").fill("2026-09-28");
+  await page.locator("#hours").fill("1");
+  await page.locator("#jobSite").selectOption("Site Alpha");
+  await page.locator("#hours2").fill("2");
+  await page.locator("#jobSite2").selectOption("Site Beta");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  const dailyRows = await page.locator(".row .meta").allInnerTexts();
+  if (!dailyRows.some(text => text.startsWith("1 hr") && text.includes("Site Alpha"))) throw new Error("Daily form did not save first-site hours.");
+  if (!dailyRows.some(text => text.startsWith("2 hrs") && text.includes("Site Beta"))) throw new Error("Daily form did not save second-site hours.");
 
   await page.getByRole("button", { name: "Log expense", exact: true }).click();
   await page.locator("#amount").fill("18.75");
@@ -56,6 +78,8 @@ try {
   await page.locator("#worker").fill("Cloud Test Worker");
   await page.locator("#includePay").check();
   const report = await page.locator("#reportPreview").innerText();
+  if (!report.includes("Site Alpha") || !report.includes("Site Beta")) throw new Error("Shared report did not list both job sites.");
+  if (!report.includes("Total hours: 11 hrs")) throw new Error("Hours from both job sites were not totaled correctly.");
   const sharedUrl = report.split("\n").find(line => line.startsWith("http"));
   if (!sharedUrl) throw new Error("Read-only report link was not added to the report.");
 
@@ -71,6 +95,7 @@ try {
     cloudSaved: true,
     weeklyBulkEdit: true,
     reusableJobSites: true,
+    separateHoursPerJobSite: true,
     cameraAndExistingReceipt: true,
     reportLinkIncluded: true,
     viewerReadOnly: true,
