@@ -40,11 +40,15 @@ try {
   await page.locator("#category").fill("Gas");
   await page.locator("#jobSite").selectOption("Site Alpha");
   await page.locator("#note").fill("Job site fuel");
-  await page.locator("#receiptInput").setInputFiles({
+  if (await page.locator("#receiptCamera").getAttribute("capture") !== "environment") throw new Error("Camera receipt option is not configured.");
+  if (await page.locator("#receiptGallery").getAttribute("capture") !== null) throw new Error("Existing-photo option incorrectly forces the camera.");
+  const receiptFile = {
     name: "receipt.png",
     mimeType: "image/png",
     buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZJj8AAAAASUVORK5CYII=", "base64")
-  });
+  };
+  await page.locator("#receiptCamera").setInputFiles(receiptFile);
+  await page.locator("#receiptGallery").setInputFiles(receiptFile);
   await page.getByRole("button", { name: "Save expense", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("#cloudStatus")?.textContent === "Saved to cloud");
 
@@ -67,6 +71,7 @@ try {
     cloudSaved: true,
     weeklyBulkEdit: true,
     reusableJobSites: true,
+    cameraAndExistingReceipt: true,
     reportLinkIncluded: true,
     viewerReadOnly: true,
     receiptDownload: true
