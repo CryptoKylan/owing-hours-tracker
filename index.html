@@ -56,6 +56,9 @@
     font-weight: 700;
   }
   .rate-line { margin: 0; color: var(--muted); font-size: 14px; }
+  .cloud-status { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+  .cloud-status.ok { color: var(--green); }
+  .cloud-status.bad { color: var(--danger); }
   .icon-btn {
     border: 1px solid var(--line);
     background: var(--card);
@@ -233,6 +236,8 @@
   .full { grid-column: 1 / -1; }
   .fine { color: var(--muted); font-size: 13px; line-height: 1.4; margin: 8px 0 0; }
   .receipt-preview { display: block; width: 100%; max-height: 260px; object-fit: contain; border: 1px solid var(--line); border-radius: 12px; background: white; margin-top: 10px; }
+  .receipt-link { display: block; text-align: center; text-decoration: none; margin-top: 10px; }
+  body.read-only .actions, body.read-only #settingsBtn { display: none; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -242,6 +247,7 @@
     <div>
       <h1>Owing</h1>
       <p class="rate-line" id="rateLine">$35.00/hr</p>
+      <p class="cloud-status" id="cloudStatus">Connecting to cloud…</p>
     </div>
     <button class="icon-btn" id="settingsBtn" type="button" aria-label="Settings">⚙</button>
   </header>
@@ -276,6 +282,22 @@
 <script>
 const KEY = "owing-ledger-v1";
 const DEFAULT_RATE = 35;
+const CLOUD_API = "https://temp.trustedeveryday.com/owing-cloud";
+const CLOUD_EDITOR_KEY = "owing-cloud-editor-v1";
+const CLOUD_VIEWER_KEY = "owing-cloud-viewer-v1";
+const cloudParams = new URLSearchParams(location.hash.slice(1));
+const viewerTokenFromLink = cloudParams.get("view") || "";
+const editorTokenFromLink = cloudParams.get("edit") || "";
+const viewerTokenFromEditorLink = cloudParams.get("share") || "";
+const isReadOnly = Boolean(viewerTokenFromLink);
+let editorToken = editorTokenFromLink || localStorage.getItem(CLOUD_EDITOR_KEY) || "";
+let viewerToken = viewerTokenFromEditorLink || localStorage.getItem(CLOUD_VIEWER_KEY) || "";
+let cloudReady = false;
+let cloudTimer = 0;
+let cloudReceipts = new Map();
+const reportFrom = cloudParams.get("from") || "";
+const reportTo = cloudParams.get("to") || "";
+const reportIncludeDetails = cloudParams.get("details") !== "0";
 
 function load() {
   try {
@@ -296,6 +318,7 @@ function blankState() {
 }
 function save(state) {
   localStorage.setItem(KEY, JSON.stringify(state));
+  queueCloudSync();
 }
 const RECEIPT_DB = "owing-receipts-v1";
 let receiptDbPromise;
@@ -337,6 +360,101 @@ function dataUrlToBlob(dataUrl) {
   const binary = atob(parts[1] || "");
   const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
   return new Blob([bytes], { type: mime });
+}
+function setCloudStatus(text, kind = "") {
+  const el = document.getElementById("cloudStatus");
+  if (!el) return;
+  el.textContent = text;
+  el.className = "cloud-status" + (kind ? " " + kind : "");
+}
+async function cloudPayload() {
+  const storedReceipts = await receiptAll();
+  const receipts = await Promise.all(storedReceipts.map(async record => ({
+    id: record.id,
+    name: record.name || "receipt.jpg",
+    data: await blobToDataUrl(record.blob)
+  })));
+  return { ...state, receipts };
+}
+async function applyCloudPayload(payload) {
+  if (!payload || !Array.isArray(payload.entries)) throw new Error("Cloud ledger data is invalid.");
+  state = {
+    rate: Number(payload.rate) > 0 ? round2(payload.rate) : DEFAULT_RATE,
+    bossEmail: String(payload.bossEmail || "").trim(),
+    workerName: String(payload.workerName || "").trim(),
+    entries: payload.entries.filter(e => e && e.id && e.date && (e.type === "hours" || e.type === "payment" || e.type === "expense"))
+  };
+  await receiptClear();
+  cloudReceipts = new Map();
+  for (const receipt of Array.isArray(payload.receipts) ? payload.receipts : []) {
+    if (!receipt || !receipt.id || !receipt.data) continue;
+    cloudReceipts.set(receipt.id, receipt);
+    await receiptPut(receipt.id, dataUrlToBlob(receipt.data), receipt.name || "receipt.jpg");
+  }
+  if (!isReadOnly) localStorage.setItem(KEY, JSON.stringify(state));
+}
+async function cloudRequest(method, token, body) {
+  const response = await fetch(CLOUD_API + "/api/ledger", {
+    method,
+    headers: {
+      ...(token ? { Authorization: "Bearer " + token } : {}),
+      ...(body ? { "Content-Type": "application/json" } : {})
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Cloud request failed.");
+  return result;
+}
+function queueCloudSync() {
+  if (!cloudReady || isReadOnly || !editorToken) return;
+  clearTimeout(cloudTimer);
+  setCloudStatus("Saving to cloud…");
+  cloudTimer = setTimeout(async () => {
+    try {
+      await cloudRequest("PUT", editorToken, await cloudPayload());
+      setCloudStatus("Saved to cloud", "ok");
+    } catch (error) {
+      setCloudStatus("Cloud save failed — local copy kept", "bad");
+      console.error(error);
+    }
+  }, 350);
+}
+async function initializeCloud() {
+  if (isReadOnly) {
+    document.body.classList.add("read-only");
+    state = blankState();
+    setCloudStatus("Loading shared report…");
+    const result = await cloudRequest("GET", viewerTokenFromLink);
+    await applyCloudPayload(result.data);
+    cloudReady = true;
+    setCloudStatus("Read-only cloud report · updated " + new Date(result.updatedAt).toLocaleString("en-CA"), "ok");
+    render();
+    return;
+  }
+  if (editorTokenFromLink) {
+    localStorage.setItem(CLOUD_EDITOR_KEY, editorTokenFromLink);
+    editorToken = editorTokenFromLink;
+  }
+  if (viewerTokenFromEditorLink) localStorage.setItem(CLOUD_VIEWER_KEY, viewerTokenFromEditorLink);
+  if (editorToken) {
+    setCloudStatus("Loading cloud ledger…");
+    const result = await cloudRequest("GET", editorToken);
+    await applyCloudPayload(result.data);
+    cloudReady = true;
+    setCloudStatus("Saved to cloud", "ok");
+    render();
+    return;
+  }
+  setCloudStatus("Moving this phone's ledger to cloud…");
+  const created = await cloudRequest("POST", "", await cloudPayload());
+  editorToken = created.editorToken;
+  viewerToken = created.viewerToken;
+  localStorage.setItem(CLOUD_EDITOR_KEY, editorToken);
+  localStorage.setItem(CLOUD_VIEWER_KEY, viewerToken);
+  history.replaceState(null, "", location.pathname + location.search + "#edit=" + encodeURIComponent(editorToken) + "&share=" + encodeURIComponent(viewerToken));
+  cloudReady = true;
+  setCloudStatus("Saved to cloud", "ok");
 }
 async function compressReceipt(file) {
   if (!file || !String(file.type).startsWith("image/")) throw new Error("Pick an image file.");
@@ -484,21 +602,28 @@ function formatHours(entry) {
 }
 
 let state = load();
+if (isReadOnly) state = blankState();
 let filter = "all";
 
 function render() {
-  const t = totals(state.entries);
-  document.getElementById("rateLine").textContent = money(state.rate) + "/hr · saved on this phone";
+  const shownEntries = isReadOnly
+    ? state.entries.filter(e => (!reportFrom || e.date >= reportFrom) && (!reportTo || e.date <= reportTo) && (reportIncludeDetails || e.type === "hours"))
+    : state.entries;
+  const t = totals(shownEntries);
+  document.getElementById("rateLine").textContent = isReadOnly
+    ? (state.workerName ? state.workerName + " · " : "") + (reportFrom && reportTo ? prettyDate(reportFrom) + " to " + prettyDate(reportTo) : "Shared hours report")
+    : money(state.rate) + "/hr · cloud backup on";
   const owingEl = document.getElementById("owingAmount");
   const labelEl = document.getElementById("owingLabel");
+  if (isReadOnly) labelEl.textContent = "Report balance";
   if (t.owing > 0) {
-    labelEl.textContent = "Still owed to you";
+    if (!isReadOnly) labelEl.textContent = "Still owed to you";
     owingEl.textContent = money(t.owing);
   } else if (t.owing < 0) {
-    labelEl.textContent = "Overpaid (credit)";
+    if (!isReadOnly) labelEl.textContent = "Overpaid (credit)";
     owingEl.textContent = money(Math.abs(t.owing));
   } else {
-    labelEl.textContent = "All settled";
+    if (!isReadOnly) labelEl.textContent = "All settled";
     owingEl.textContent = money(0);
   }
   const hourLabel = (Math.round(t.hours * 100) / 100).toLocaleString("en-CA", { maximumFractionDigits: 2 });
@@ -509,7 +634,7 @@ function render() {
   document.getElementById("expenseStat").textContent = money(t.expenses);
   document.getElementById("paidStat").textContent = money(t.paid);
 
-  const sorted = [...state.entries].sort((a, b) => (a.date === b.date ? (a.createdAt || 0) - (b.createdAt || 0) : a.date < b.date ? -1 : 1));
+  const sorted = [...shownEntries].sort((a, b) => (a.date === b.date ? (a.createdAt || 0) - (b.createdAt || 0) : a.date < b.date ? -1 : 1));
   const balanceAfter = new Map();
   let run = 0;
   for (const e of sorted) {
@@ -519,7 +644,7 @@ function render() {
   const visible = sorted.filter(e => filter === "all" || e.type === filter).reverse();
   const list = document.getElementById("list");
   if (!visible.length) {
-    list.innerHTML = '<div class="empty">' + (state.entries.length ? "Nothing in this filter." : "No days or payments yet. Start with the hours from the last day worked.") + "</div>";
+    list.innerHTML = '<div class="empty">' + (shownEntries.length ? "Nothing in this filter." : isReadOnly ? "No activity in this report period." : "No days or payments yet. Start with the hours from the last day worked.") + "</div>";
     return;
   }
   list.innerHTML = visible.map(e => {
@@ -687,7 +812,7 @@ function openExpense(existing) {
     '<label for="receiptInput">Receipt photo (optional)</label><input id="receiptInput" type="file" accept="image/*" capture="environment">' +
     '<img id="receiptPreview" class="receipt-preview hidden" alt="Receipt preview">' +
     '<div class="chips"><button id="removeReceipt" class="hidden" type="button">Remove receipt</button></div>' +
-    '<p class="fine">Receipt photos stay on this phone. The backup download includes them.</p>' +
+    '<p class="fine">Receipt photos are saved with the cloud ledger and remain included in backup downloads.</p>' +
     '<div class="preview">This expense increases the amount still owed until a reimbursement is logged as a payment.</div>' +
     '<div class="sheet-actions">' +
     '<button class="ghost" id="cancel" type="button">Cancel</button>' +
@@ -777,6 +902,26 @@ function openExpense(existing) {
   };
 }
 
+async function openReceiptView(entry) {
+  if (!entry || !entry.hasReceipt) return;
+  try {
+    const record = await receiptGet(entry.id);
+    const data = record && record.blob ? await blobToDataUrl(record.blob) : (cloudReceipts.get(entry.id) || {}).data;
+    if (!data) return alert("This receipt is not available.");
+    const name = (record && record.name) || (cloudReceipts.get(entry.id) || {}).name || "receipt.jpg";
+    openSheet(
+      '<div class="grab"></div><h3>' + escapeHtml(entry.category || "Job expense") + '</h3>' +
+      '<p class="fine">' + escapeHtml(prettyDate(entry.date)) + ' · ' + escapeHtml(money(expenseOf(entry))) + (entry.note ? ' · ' + escapeHtml(entry.note) : '') + '</p>' +
+      '<img class="receipt-preview" src="' + escapeHtml(data) + '" alt="Receipt for ' + escapeHtml(entry.category || "job expense") + '">' +
+      '<a class="primary receipt-link" href="' + escapeHtml(data) + '" download="' + escapeHtml(name) + '">Download receipt</a>' +
+      '<button class="ghost full receipt-link" id="closeReceipt" type="button">Close</button>'
+    );
+    document.getElementById("closeReceipt").onclick = closeSheet;
+  } catch {
+    alert("This receipt could not be opened.");
+  }
+}
+
 function rangeFor(kind) {
   const today = todayISO();
   if (kind === "week") return { from: startOfWeek(today), to: today };
@@ -813,17 +958,26 @@ function openEmail() {
   function currentRange() {
     return { from: fromEl.value, to: toEl.value };
   }
+  function sharedReportLink(range) {
+    const token = viewerToken || localStorage.getItem(CLOUD_VIEWER_KEY) || "";
+    if (!token) return "";
+    const url = new URL(location.origin + location.pathname);
+    url.hash = "view=" + encodeURIComponent(token) + "&from=" + encodeURIComponent(range.from) + "&to=" + encodeURIComponent(range.to) + "&details=" + (document.getElementById("includePay").checked ? "1" : "0");
+    return url.toString();
+  }
   function paint() {
     const range = currentRange();
     if (!range.from || !range.to || range.from > range.to) {
       preview.textContent = "Pick a start date that is on or before the end date.";
       return;
     }
-    preview.textContent = buildReport({
+    const report = buildReport({
       entries: state.entries,
       workerName: document.getElementById("worker").value.trim(),
       rate: state.rate
     }, range.from, range.to, document.getElementById("includePay").checked);
+    const link = sharedReportLink(range);
+    preview.textContent = report + (link ? "\n\nView the live read-only log and download receipts:\n" + link : "");
   }
   function mark(kind) {
     document.querySelectorAll("#ranges button").forEach(b => b.classList.toggle("on", b.dataset.range === kind));
@@ -914,9 +1068,11 @@ function openSettings() {
     '<button class="primary" id="saveRate" type="button">Save</button>' +
     '<button class="ghost full" id="exportBtn" type="button">Download backup</button>' +
     '<button class="ghost full" id="importBtn" type="button">Restore backup</button>' +
-    '<button class="danger full" id="wipe" type="button">Erase everything on this phone</button>' +
+    '<button class="ghost full" id="copyEditLink" type="button">Copy private editing link</button>' +
+    '<button class="ghost full" id="copyViewLink" type="button">Copy boss read-only link</button>' +
+    '<button class="danger full" id="wipe" type="button">Erase the cloud ledger</button>' +
     "</div>" +
-    '<p class="fine">Right now: ' + money(t.earned) + " earned, " + money(t.expenses) + " in expenses, " + money(t.paid) + " received, " + money(t.owing) + " still owed. Data and receipt photos stay in this browser only. Back them up if you clear Chrome data.</p>" +
+    '<p class="fine">Right now: ' + money(t.earned) + " earned, " + money(t.expenses) + " in expenses, " + money(t.paid) + " received, " + money(t.owing) + " still owed. Data and receipt photos are saved in the cloud and cached on this phone. Keep the private editing link private.</p>" +
     '<input id="importFile" class="hidden" type="file" accept="application/json,.json">'
   );
   document.getElementById("cancel").onclick = closeSheet;
@@ -948,13 +1104,28 @@ function openSettings() {
     }
   };
   document.getElementById("importBtn").onclick = () => document.getElementById("importFile").click();
+  document.getElementById("copyEditLink").onclick = async () => {
+    const token = viewerToken || localStorage.getItem(CLOUD_VIEWER_KEY) || "";
+    const url = location.origin + location.pathname + "#edit=" + encodeURIComponent(editorToken) + (token ? "&share=" + encodeURIComponent(token) : "");
+    try { await navigator.clipboard.writeText(url); alert("Private editing link copied. Anyone with this link can change the ledger."); }
+    catch { alert("Could not copy automatically. Bookmark the current page instead."); }
+  };
+  document.getElementById("copyViewLink").onclick = async () => {
+    const token = viewerToken || localStorage.getItem(CLOUD_VIEWER_KEY) || "";
+    if (!token) return alert("The boss link is not available on this device. Open the original private editing link first.");
+    const dates = state.entries.map(e => e.date).sort();
+    const from = dates[0] || todayISO();
+    const url = location.origin + location.pathname + "#view=" + encodeURIComponent(token) + "&from=" + from + "&to=" + todayISO() + "&details=1";
+    try { await navigator.clipboard.writeText(url); alert("Read-only boss link copied."); }
+    catch { alert("Could not copy the link automatically."); }
+  };
   document.getElementById("importFile").onchange = async (ev) => {
     const file = ev.target.files && ev.target.files[0];
     if (!file) return;
     try {
       const next = JSON.parse(await file.text());
       if (!next || !Array.isArray(next.entries)) throw new Error("bad");
-      if (!confirm("Replace the ledger on this phone with this backup?")) return;
+      if (!confirm("Replace the cloud ledger with this backup?")) return;
       state = {
         rate: Number(next.rate) > 0 ? round2(next.rate) : DEFAULT_RATE,
         bossEmail: String(next.bossEmail || "").trim(),
@@ -973,7 +1144,7 @@ function openSettings() {
     }
   };
   document.getElementById("wipe").onclick = async () => {
-    if (!confirm("Erase all hours, expenses, payments, and receipt photos on this phone?")) return;
+    if (!confirm("Erase all cloud hours, expenses, payments, and receipt photos? This cannot be undone unless you have a backup.")) return;
     try { await receiptClear(); } catch {}
     state = { rate: state.rate, bossEmail: state.bossEmail || "", workerName: state.workerName || "", entries: [] };
     save(state);
@@ -999,11 +1170,20 @@ document.getElementById("list").onclick = (ev) => {
   if (!row) return;
   const entry = entryById(row.dataset.id);
   if (!entry) return;
+  if (isReadOnly) {
+    if (entry.type === "expense" && entry.hasReceipt) openReceiptView(entry);
+    return;
+  }
   if (entry.type === "payment") openPay(entry);
   else if (entry.type === "expense") openExpense(entry);
   else openHours(entry);
 };
 render();
+initializeCloud().catch(error => {
+  cloudReady = false;
+  setCloudStatus((isReadOnly ? "Shared report unavailable" : "Cloud unavailable — local copy kept") + ": " + (error.message || "Try again."), "bad");
+  console.error(error);
+});
 </script>
 </body>
 </html>
