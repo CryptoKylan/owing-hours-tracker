@@ -254,7 +254,7 @@
   <div class="actions">
     <button class="hours" id="addHours" type="button">Log hours</button>
     <button class="pay" id="addPay" type="button">Log payment</button>
-    <button class="mail" id="emailReport" type="button">Email hours</button>
+    <button class="mail" id="emailReport" type="button">Email or text hours</button>
   </div>
   <div class="section-head">
     <h2>Activity</h2>
@@ -602,7 +602,7 @@ function rangeFor(kind) {
 function openEmail() {
   const start = rangeFor("week");
   openSheet(
-    '<div class="grab"></div><h3>Email hours</h3>' +
+    '<div class="grab"></div><h3>Email or text hours</h3>' +
     '<label for="boss">Boss email</label><input id="boss" type="email" inputmode="email" autocomplete="email" value="' + escapeHtml(state.bossEmail || "") + '" placeholder="boss@email.com">' +
     '<label for="worker">His name on the report</label><input id="worker" type="text" maxlength="80" value="' + escapeHtml(state.workerName || "") + '" placeholder="Optional">' +
     '<label>Period</label><div class="chips" id="ranges">' +
@@ -614,10 +614,11 @@ function openEmail() {
     '<div><label for="to">To</label><input id="to" type="date" value="' + start.to + '"></div></div>' +
     '<label class="check"><input id="includePay" type="checkbox"> Include payments and what is still owed</label>' +
     '<pre class="report" id="reportPreview"></pre>' +
-    '<p class="fine">This opens his email app with the report filled in. Nothing is sent until he presses Send.</p>' +
+    '<p class="fine">Choose email or text. The report is filled in, but nothing is sent until he presses Send in that app.</p>' +
     '<div class="sheet-actions">' +
     '<button class="ghost" id="cancel" type="button">Cancel</button>' +
     '<button class="primary" id="sendMail" type="button">Open email</button>' +
+    '<button class="primary" id="sendText" type="button">Open text</button>' +
     '<button class="ghost full" id="copyReport" type="button">Copy report</button>' +
     "</div>"
   );
@@ -696,6 +697,23 @@ function openEmail() {
       return;
     }
     window.location.href = href;
+  };
+  document.getElementById("sendText").onclick = () => {
+    const name = document.getElementById("worker").value.trim();
+    state.workerName = name;
+    save(state);
+    const range = currentRange();
+    if (!range.from || !range.to || range.from > range.to) return alert("Check the dates.");
+    const body = preview.textContent;
+    if (!body || body.indexOf("No hours") === 0 || body.indexOf("No hours") > 0 && body.indexOf("Total hours") === -1) {
+      if (!confirm("There are no hours in that period. Open the text anyway?")) return;
+    }
+    if (body.length > 1800) {
+      alert("That report is too long for a phone text link. Use a shorter period, or copy the report and paste it.");
+      return;
+    }
+    const separator = /iPad|iPhone|iPod/.test(navigator.userAgent) ? "&" : "?";
+    window.location.href = "sms:" + separator + "body=" + encodeURIComponent(body);
   };
 }
 function openSettings() {
