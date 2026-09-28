@@ -242,12 +242,13 @@
   .file-actions label { margin: 0; text-align: center; cursor: pointer; }
   .week-grid { display: grid; gap: 8px; margin-top: 10px; }
   .week-row { display: grid; grid-template-columns: 74px 82px 1fr; gap: 8px; align-items: center; }
-  .week-row .day { grid-row: 1 / 5; align-self: start; padding-top: 10px; font-size: 13px; line-height: 1.25; font-weight: 750; }
+  .week-row .day { grid-row: 1 / 6; align-self: start; padding-top: 10px; font-size: 13px; line-height: 1.25; font-weight: 750; }
   .week-row .day small { display: block; color: var(--muted); font-weight: 500; }
   .week-row input, .week-row select { padding: 10px; min-width: 0; }
   .week-row .week-hours2 { grid-column: 2; }
   .week-row .week-site2 { grid-column: 3; }
   .week-row .week-note { grid-column: 2 / -1; }
+  .week-row .week-secondary-action { grid-column: 2 / -1; border: 1px solid var(--line); background: white; border-radius: 10px; padding: 9px; font-weight: 650; }
   body.read-only .actions, body.read-only #settingsBtn { display: none; }
   .hidden { display: none !important; }
 </style>
@@ -720,10 +721,14 @@ function entryById(id) {
 function openHours(existing) {
   const e = existing || { date: todayISO(), hours: "", minutes: "", note: "", rate: state.rate };
   const secondSiteFields = existing ? "" :
-    '<label for="jobSite2">Second job site (optional)</label><select id="jobSite2" class="job-site-select">' + jobSiteOptions("") + '</select>' +
+    '<div class="chips"><button id="showSecondSite" class="hidden" type="button">Add another job site</button></div>' +
+    '<div id="secondSiteBlock" class="hidden">' +
+    '<label for="jobSite2">Second job site</label><select id="jobSite2" class="job-site-select">' + jobSiteOptions("") + '</select>' +
     '<div class="split"><div><label for="hours2">Hours at second site</label><input id="hours2" inputmode="numeric" type="number" min="0" step="1" value=""></div>' +
     '<div><label for="minutes2">Minutes</label><input id="minutes2" inputmode="numeric" type="number" min="0" max="59" step="1" value=""></div></div>' +
-    '<label for="note2">Second-site note (optional)</label><textarea id="note2" maxlength="240"></textarea>';
+    '<label for="note2">Second-site note (optional)</label><textarea id="note2" maxlength="240"></textarea>' +
+    '<div class="chips"><button id="removeSecondSite" type="button">Remove second job site</button></div>' +
+    '</div>';
   openSheet(
     '<div class="grab"></div><h3>' + (existing ? "Edit hours" : "Log hours") + "</h3>" +
     '<label for="date">Date worked</label><input id="date" type="date" value="' + escapeHtml(e.date) + '">' +
@@ -750,6 +755,13 @@ function openHours(existing) {
   const minutes2 = document.getElementById("minutes2");
   const rate = document.getElementById("rate");
   const preview = document.getElementById("preview");
+  const secondBlock = document.getElementById("secondSiteBlock");
+  const showSecond = document.getElementById("showSecondSite");
+  function updateSecondSiteOption() {
+    if (!showSecond || !secondBlock) return;
+    const firstHasHours = (Number(hours.value) || 0) > 0 || (Number(minutes.value) || 0) > 0;
+    showSecond.classList.toggle("hidden", !firstHasHours || !secondBlock.classList.contains("hidden"));
+  }
   function paint() {
     const h = Number(hours.value) || 0;
     const m = Number(minutes.value) || 0;
@@ -761,7 +773,7 @@ function openHours(existing) {
     preview.textContent = total && r ? hoursLabel(total) + " · " + money(amt) : "Enter hours to see the amount";
   }
   paint();
-  [hours, minutes, hours2, minutes2, rate].filter(Boolean).forEach(el => el.addEventListener("input", paint));
+  [hours, minutes, hours2, minutes2, rate].filter(Boolean).forEach(el => el.addEventListener("input", () => { paint(); updateSecondSiteOption(); }));
   document.getElementById("chips").addEventListener("click", (ev) => {
     const btn = ev.target.closest("button");
     if (!btn) return;
@@ -772,6 +784,20 @@ function openHours(existing) {
   });
   document.getElementById("cancel").onclick = closeSheet;
   document.getElementById("addJobSite").onclick = () => addJobSite(document.getElementById("jobSite"));
+  if (showSecond) showSecond.onclick = () => {
+    secondBlock.classList.remove("hidden");
+    updateSecondSiteOption();
+  };
+  const removeSecond = document.getElementById("removeSecondSite");
+  if (removeSecond) removeSecond.onclick = () => {
+    document.getElementById("jobSite2").value = "";
+    hours2.value = "";
+    minutes2.value = "";
+    document.getElementById("note2").value = "";
+    secondBlock.classList.add("hidden");
+    paint();
+    updateSecondSiteOption();
+  };
   document.getElementById("save").onclick = () => {
     const date = document.getElementById("date").value;
     const h = Number(hours.value) || 0;
@@ -825,6 +851,7 @@ function openHours(existing) {
     closeSheet();
     render();
   };
+  updateSecondSiteOption();
 }
 
 function openWeek() {
@@ -880,17 +907,42 @@ function openWeek() {
       const value2 = existing[1] ? Math.round(hoursOf(second) * 100) / 100 : "";
       const rate1 = existing[0] ? Number(first.rate) || state.rate : "";
       const rate2 = existing[1] ? Number(second.rate) || state.rate : "";
-      return '<div class="week-row" data-date="' + date + '" data-existing-rate1="' + escapeHtml(rate1) + '" data-existing-rate2="' + escapeHtml(rate2) + '">' +
+      const secondHidden = existing[1] ? "" : " hidden";
+      return '<div class="week-row" data-date="' + date + '" data-existing-rate1="' + escapeHtml(rate1) + '" data-existing-rate2="' + escapeHtml(rate2) + '" data-second-open="' + (existing[1] ? "1" : "0") + '">' +
         '<div class="day">' + dayNames[index].slice(0, 3) + '<small>' + escapeHtml(prettyDate(date).replace(/^[^,]+,\s*/, "")) + '</small></div>' +
         '<input class="week-hours1" aria-label="' + dayNames[index] + ' site 1 hours" inputmode="decimal" type="number" min="0" max="24" step="0.25" value="' + escapeHtml(value1) + '" placeholder="Hours 1">' +
         '<select class="week-site1 job-site-select" aria-label="' + dayNames[index] + ' job site 1">' + jobSiteOptions(first.jobSite || "") + '</select>' +
         '<input class="week-note week-note1" aria-label="' + dayNames[index] + ' site 1 note" type="text" maxlength="120" value="' + escapeHtml(first.note || "") + '" placeholder="Site 1 note (optional)">' +
-        '<input class="week-hours2" aria-label="' + dayNames[index] + ' site 2 hours" inputmode="decimal" type="number" min="0" max="24" step="0.25" value="' + escapeHtml(value2) + '" placeholder="Hours 2">' +
-        '<select class="week-site2 job-site-select" aria-label="' + dayNames[index] + ' job site 2">' + jobSiteOptions(second.jobSite || "") + '</select>' +
-        '<input class="week-note week-note2" aria-label="' + dayNames[index] + ' site 2 note" type="text" maxlength="120" value="' + escapeHtml(second.note || "") + '" placeholder="Site 2 note (optional)">' +
+        '<button class="week-secondary-action week-add-second' + (existing[1] || !value1 ? " hidden" : "") + '" type="button" aria-label="' + dayNames[index] + ' add another job site">Add another job site</button>' +
+        '<input class="week-hours2 week-second' + secondHidden + '" aria-label="' + dayNames[index] + ' site 2 hours" inputmode="decimal" type="number" min="0" max="24" step="0.25" value="' + escapeHtml(value2) + '" placeholder="Hours 2">' +
+        '<select class="week-site2 week-second job-site-select' + secondHidden + '" aria-label="' + dayNames[index] + ' job site 2">' + jobSiteOptions(second.jobSite || "") + '</select>' +
+        '<input class="week-note week-note2 week-second' + secondHidden + '" aria-label="' + dayNames[index] + ' site 2 note" type="text" maxlength="120" value="' + escapeHtml(second.note || "") + '" placeholder="Site 2 note (optional)">' +
+        '<button class="week-secondary-action week-remove-second week-second' + secondHidden + '" type="button" aria-label="' + dayNames[index] + ' remove second job site">Remove second job site</button>' +
         '</div>';
     }).join("");
-    grid.querySelectorAll("input").forEach(input => input.addEventListener("input", paintSummary));
+    function refreshRow(row) {
+      const hasFirstHours = (Number(row.querySelector(".week-hours1").value) || 0) > 0;
+      const isOpen = row.dataset.secondOpen === "1";
+      row.querySelector(".week-add-second").classList.toggle("hidden", !hasFirstHours || isOpen);
+    }
+    grid.querySelectorAll(".week-row").forEach(row => {
+      row.querySelectorAll("input").forEach(input => input.addEventListener("input", () => { paintSummary(); refreshRow(row); }));
+      row.querySelector(".week-add-second").onclick = () => {
+        row.dataset.secondOpen = "1";
+        row.querySelectorAll(".week-second").forEach(element => element.classList.remove("hidden"));
+        refreshRow(row);
+      };
+      row.querySelector(".week-remove-second").onclick = () => {
+        row.querySelector(".week-hours2").value = "";
+        row.querySelector(".week-site2").value = "";
+        row.querySelector(".week-note2").value = "";
+        row.dataset.secondOpen = "0";
+        row.querySelectorAll(".week-second").forEach(element => element.classList.add("hidden"));
+        paintSummary();
+        refreshRow(row);
+      };
+      refreshRow(row);
+    });
     paintSummary();
   }
 
@@ -913,6 +965,7 @@ function openWeek() {
         raw: row.querySelector(".week-hours" + block).value.trim(),
         site: row.querySelector(".week-site" + block).value
       }));
+      if (values[1].raw && !values[0].raw) invalid = true;
       if (values[0].raw && values[1].raw && values[0].site && values[0].site === values[1].site) invalid = true;
       if (values.reduce((sum, value) => sum + (Number(value.raw) || 0), 0) > 24) invalid = true;
       values.forEach(({ block, raw, site }) => {

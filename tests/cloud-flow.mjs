@@ -19,9 +19,11 @@ try {
   await page.getByRole("button", { name: "Add new job site", exact: true }).click();
   page.once("dialog", dialog => dialog.accept("Site Beta"));
   await page.getByRole("button", { name: "Add new job site", exact: true }).click();
+  if (await page.getByLabel("Monday site 2 hours").isVisible()) throw new Error("Weekly second-site fields should start hidden.");
   await page.getByLabel("Monday site 1 hours").fill("4");
   await page.getByLabel("Monday job site 1").selectOption("Site Alpha");
   await page.getByLabel("Monday site 1 note").fill("Morning site");
+  await page.getByLabel("Monday add another job site").click();
   await page.getByLabel("Monday site 2 hours").fill("2.5");
   await page.getByLabel("Monday job site 2").selectOption("Site Beta");
   await page.getByLabel("Monday site 2 note").fill("Afternoon site");
@@ -47,9 +49,11 @@ try {
   if (weekRows.some(text => text.startsWith("7h 15m"))) throw new Error("Weekly editor did not clear Tuesday.");
 
   await page.getByRole("button", { name: "Log hours", exact: true }).click();
+  if (await page.locator("#hours2").isVisible()) throw new Error("Daily second-site fields should start hidden.");
   await page.locator("#date").fill("2026-09-28");
   await page.locator("#hours").fill("1");
   await page.locator("#jobSite").selectOption("Site Alpha");
+  await page.getByRole("button", { name: "Add another job site", exact: true }).click();
   await page.locator("#hours2").fill("2");
   await page.locator("#jobSite2").selectOption("Site Beta");
   await page.getByRole("button", { name: "Save", exact: true }).click();
@@ -96,6 +100,7 @@ try {
     weeklyBulkEdit: true,
     reusableJobSites: true,
     separateHoursPerJobSite: true,
+    conditionalSecondSite: true,
     cameraAndExistingReceipt: true,
     reportLinkIncluded: true,
     viewerReadOnly: true,
