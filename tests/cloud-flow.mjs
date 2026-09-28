@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("/usr/lib/node_modules/openclaw/node_modules/playwright-core");
+const baseUrl = process.env.BASE_URL || "http://localhost:4173/";
 
 const browser = await chromium.launch({
   headless: true,
@@ -10,7 +11,7 @@ const browser = await chromium.launch({
 
 try {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  await page.goto("http://localhost:4173/", { waitUntil: "networkidle" });
+  await page.goto(baseUrl, { waitUntil: "networkidle" });
   await page.waitForFunction(() => document.querySelector("#cloudStatus")?.textContent === "Saved to cloud");
 
   await page.getByRole("button", { name: "Log hours", exact: true }).click();
