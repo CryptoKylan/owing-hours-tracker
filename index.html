@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1c1917">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Owing">
+<title>Owing</title>
+<style>
+  :root {
+    --bg: #f3efe6;
+    --ink: #1c1917;
+    --muted: #6f675e;
+    --line: #e4dccd;
+    --card: #fffdf8;
+    --green: #0f6e56;
+    --green-soft: #e7f5ef;
+    --amber: #9a3412;
+    --amber-soft: #fff1e6;
+    --danger: #9f1239;
+    --shadow: 0 10px 30px rgba(28, 25, 23, 0.08);
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bot: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  .app {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: calc(18px + var(--safe-top)) 16px calc(28px + var(--safe-bot));
+  }
+  header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 0 2px;
+    color: var(--muted);
+    font-weight: 700;
+  }
+  .rate-line { margin: 0; color: var(--muted); font-size: 14px; }
+  .icon-btn {
+    border: 1px solid var(--line);
+    background: var(--card);
+    border-radius: 999px;
+    width: 42px;
+    height: 42px;
+    font-size: 18px;
+  }
+  .hero {
+    background: var(--ink);
+    color: #faf7f2;
+    border-radius: 22px;
+    padding: 22px 20px 18px;
+    box-shadow: var(--shadow);
+  }
+  .hero .label {
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.72;
+    margin: 0 0 6px;
+  }
+  .hero .amount {
+    font-size: 44px;
+    line-height: 1;
+    font-weight: 750;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+    margin: 0;
+  }
+  .hero .sub {
+    margin: 10px 0 0;
+    color: #d6d0c6;
+    font-size: 14px;
+  }
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 12px 0 16px;
+  }
+  .stat {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 12px 14px;
+  }
+  .stat span { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat strong { display: block; margin-top: 4px; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .actions button, .primary, .ghost, .danger {
+    border: 0;
+    border-radius: 14px;
+    padding: 14px 12px;
+    font-weight: 700;
+  }
+  .actions .hours { background: var(--green); color: white; }
+  .actions .pay { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
+  .actions .mail { grid-column: 1 / -1; background: var(--ink); color: white; }
+  pre.report {
+    white-space: pre-wrap;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px;
+    font-size: 13px;
+    line-height: 1.45;
+    max-height: 220px;
+    overflow: auto;
+    margin: 12px 0 0;
+  }
+  .check { display: flex; gap: 8px; align-items: center; margin-top: 12px; color: var(--ink); font-size: 14px; }
+  .check input { width: auto; }
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 22px 0 10px;
+  }
+  .section-head h2 { margin: 0; font-size: 16px; }
+  .filters { display: flex; gap: 6px; }
+  .filters button {
+    border: 1px solid var(--line);
+    background: transparent;
+    border-radius: 999px;
+    padding: 6px 10px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .filters button.on { background: var(--ink); color: white; border-color: var(--ink); }
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .row {
+    width: 100%;
+    text-align: left;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 12px 14px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 12px;
+  }
+  .row .when { font-weight: 700; }
+  .row .meta, .row .note { color: var(--muted); font-size: 13px; }
+  .row .note { grid-column: 1 / -1; }
+  .row .money { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
+  .row .money.plus { color: var(--green); }
+  .row .money.minus { color: var(--amber); }
+  .row .bal { color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+  .empty {
+    border: 1px dashed var(--line);
+    border-radius: 16px;
+    padding: 22px 16px;
+    color: var(--muted);
+    text-align: center;
+  }
+  .sheet-back {
+    position: fixed;
+    inset: 0;
+    background: rgba(28, 25, 23, 0.45);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 5;
+  }
+  .sheet {
+    width: min(480px, 100%);
+    background: var(--bg);
+    border-radius: 22px 22px 0 0;
+    padding: 14px 16px calc(18px + var(--safe-bot));
+    max-height: 92dvh;
+    overflow: auto;
+  }
+  .grab {
+    width: 42px;
+    height: 4px;
+    border-radius: 99px;
+    background: #d3cbbf;
+    margin: 0 auto 12px;
+  }
+  .sheet h3 { margin: 0 0 12px; font-size: 20px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 6px; font-weight: 650; }
+  input, textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: white;
+    border-radius: 12px;
+    padding: 12px;
+  }
+  textarea { min-height: 72px; resize: vertical; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .chips button {
+    border: 1px solid var(--line);
+    background: white;
+    border-radius: 999px;
+    padding: 8px 12px;
+  }
+  .chips button.on { background: var(--ink); color: white; border-color: var(--ink); }
+  .preview {
+    margin-top: 12px;
+    background: var(--green-soft);
+    color: var(--green);
+    border-radius: 12px;
+    padding: 12px;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+  }
+  .sheet-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+  .primary { background: var(--ink); color: white; }
+  .ghost { background: white; border: 1px solid var(--line); }
+  .danger { background: #fff1f2; color: var(--danger); border: 1px solid #fecdd3; }
+  .full { grid-column: 1 / -1; }
+  .fine { color: var(--muted); font-size: 13px; line-height: 1.4; margin: 8px 0 0; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>Owing</h1>
+      <p class="rate-line" id="rateLine">$35.00/hr</p>
+    </div>
+    <button class="icon-btn" id="settingsBtn" type="button" aria-label="Settings">⚙</button>
+  </header>
+  <section class="hero">
+    <p class="label" id="owingLabel">Still owed to you</p>
+    <p class="amount" id="owingAmount">$0.00</p>
+    <p class="sub" id="owingSub">No hours logged yet</p>
+  </section>
+  <div class="stats">
+    <div class="stat"><span>Earned</span><strong id="earnedStat">$0.00</strong></div>
+    <div class="stat"><span>Paid</span><strong id="paidStat">$0.00</strong></div>
+  </div>
+  <div class="actions">
+    <button class="hours" id="addHours" type="button">Log hours</button>
+    <button class="pay" id="addPay" type="button">Log payment</button>
+    <button class="mail" id="emailReport" type="button">Email hours</button>
+  </div>
+  <div class="section-head">
+    <h2>Activity</h2>
+    <div class="filters" id="filters">
+      <button type="button" data-filter="all" class="on">All</button>
+      <button type="button" data-filter="hours">Hours</button>
+      <button type="button" data-filter="payment">Payments</button>
+    </div>
+  </div>
+  <div class="list" id="list"></div>
+</div>
+<div id="sheetHost"></div>
+<script>
+const KEY = "owing-ledger-v1";
+const DEFAULT_RATE = 35;
+
+function load() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY) || "null");
+    if (!raw || !Array.isArray(raw.entries)) return blankState();
+    return {
+      rate: Number(raw.rate) > 0 ? Number(raw.rate) : DEFAULT_RATE,
+      bossEmail: String(raw.bossEmail || "").trim(),
+      workerName: String(raw.workerName || "").trim(),
+      entries: raw.entries.filter(e => e && (e.type === "hours" || e.type === "payment") && e.date)
+    };
+  } catch {
+    return blankState();
+  }
+}
+function blankState() {
+  return { rate: DEFAULT_RATE, entries: [], bossEmail: "", workerName: "" };
+}
+function save(state) {
+  localStorage.setItem(KEY, JSON.stringify(state));
+}
+function toISO(d) {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function startOfWeek(iso) {
+  const d = parseISO(iso);
+  const day = d.getDay();
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  return toISO(d);
+}
+function startOfMonth(iso) {
+  const d = parseISO(iso);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-01";
+}
+function validEmail(s) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+function hoursLabel(n) {
+  const totalMin = Math.round(Number(n) * 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (m === 0) return h + (h === 1 ? " hr" : " hrs");
+  if (h === 0) return m + " min";
+  return h + "h " + m + "m";
+}
+function buildReport(data, from, to, includePay) {
+  const inRange = data.entries.filter(e => e.date >= from && e.date <= to);
+  const hours = inRange.filter(e => e.type === "hours").sort(byDate);
+  const pays = inRange.filter(e => e.type === "payment").sort(byDate);
+  const lines = [];
+  lines.push(data.workerName ? data.workerName + " — hours report" : "Hours report");
+  lines.push(prettyDate(from) + " to " + prettyDate(to));
+  lines.push("");
+  if (!hours.length) lines.push("No hours in this period.");
+  else {
+    hours.forEach(e => {
+      let line = prettyDate(e.date) + " — " + formatHours(e) + " — " + money(earnedOf(e));
+      if (e.note) line += " — " + e.note;
+      lines.push(line);
+    });
+    const t = totals(hours);
+    lines.push("");
+    lines.push("Total hours: " + hoursLabel(t.hours));
+    lines.push("Amount for these hours: " + money(t.earned));
+  }
+  if (includePay) {
+    lines.push("");
+    lines.push("Payments in this period");
+    if (!pays.length) lines.push("None");
+    else pays.forEach(e => lines.push(prettyDate(e.date) + " — " + money(paidOf(e)) + (e.note ? " — " + e.note : "")));
+    lines.push("");
+    lines.push("Still owed overall: " + money(totals(data.entries).owing));
+  }
+  return lines.join("\n");
+}
+function byDate(a, b) {
+  if (a.date === b.date) return (a.createdAt || 0) - (b.createdAt || 0);
+  return a.date < b.date ? -1 : 1;
+}
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+function todayISO() {
+  const n = new Date();
+  return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0");
+}
+function parseISO(iso) {
+  const [y, m, d] = String(iso).split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+function prettyDate(iso) {
+  return parseISO(iso).toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
+function money(n) {
+  return new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(round2(n));
+}
+function round2(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+function hoursOf(entry) {
+  const h = Number(entry.hours) || 0;
+  const m = Number(entry.minutes) || 0;
+  return h + m / 60;
+}
+function earnedOf(entry) {
+  if (entry.type !== "hours") return 0;
+  const stored = Number(entry.amount);
+  if (Number.isFinite(stored) && entry.amount !== "" && entry.amount != null) return round2(stored);
+  return round2(hoursOf(entry) * (Number(entry.rate) || DEFAULT_RATE));
+}
+function paidOf(entry) {
+  return entry.type === "payment" ? round2(entry.amount || 0) : 0;
+}
+function totals(entries) {
+  let earned = 0, paid = 0, hours = 0;
+  for (const e of entries) {
+    earned += earnedOf(e);
+    paid += paidOf(e);
+    if (e.type === "hours") hours += hoursOf(e);
+  }
+  return { earned: round2(earned), paid: round2(paid), owing: round2(earned - paid), hours };
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return "&#" + c.charCodeAt(0) + ";";
+  });
+}
+function formatHours(entry) {
+  const totalMin = Math.round(hoursOf(entry) * 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (m === 0) return h + (h === 1 ? " hr" : " hrs");
+  if (h === 0) return m + " min";
+  return h + "h " + m + "m";
+}
+
+let state = load();
+let filter = "all";
+
+function render() {
+  const t = totals(state.entries);
+  document.getElementById("rateLine").textContent = money(state.rate) + "/hr · saved on this phone";
+  const owingEl = document.getElementById("owingAmount");
+  const labelEl = document.getElementById("owingLabel");
+  if (t.owing > 0) {
+    labelEl.textContent = "Still owed to you";
+    owingEl.textContent = money(t.owing);
+  } else if (t.owing < 0) {
+    labelEl.textContent = "Overpaid (credit)";
+    owingEl.textContent = money(Math.abs(t.owing));
+  } else {
+    labelEl.textContent = "All settled";
+    owingEl.textContent = money(0);
+  }
+  const hourLabel = (Math.round(t.hours * 100) / 100).toLocaleString("en-CA", { maximumFractionDigits: 2 });
+  document.getElementById("owingSub").textContent = t.hours
+    ? hourLabel + " hrs logged · " + money(t.earned) + " earned · " + money(t.paid) + " received"
+    : "Log hours at the end of a work day";
+  document.getElementById("earnedStat").textContent = money(t.earned);
+  document.getElementById("paidStat").textContent = money(t.paid);
+
+  const sorted = [...state.entries].sort((a, b) => (a.date === b.date ? (a.createdAt || 0) - (b.createdAt || 0) : a.date < b.date ? -1 : 1));
+  const balanceAfter = new Map();
+  let run = 0;
+  for (const e of sorted) {
+    run = round2(run + earnedOf(e) - paidOf(e));
+    balanceAfter.set(e.id, run);
+  }
+  const visible = sorted.filter(e => filter === "all" || e.type === filter).reverse();
+  const list = document.getElementById("list");
+  if (!visible.length) {
+    list.innerHTML = '<div class="empty">' + (state.entries.length ? "Nothing in this filter." : "No days or payments yet. Start with the hours from the last day worked.") + "</div>";
+    return;
+  }
+  list.innerHTML = visible.map(e => {
+    const isPay = e.type === "payment";
+    const main = isPay ? "Payment received" : formatHours(e) + " · " + money(Number(e.rate) || state.rate) + "/hr";
+    const amt = isPay ? "−" + money(paidOf(e)) : "+" + money(earnedOf(e));
+    const note = e.note ? '<div class="note">' + escapeHtml(e.note) + "</div>" : "";
+    return '<button class="row" type="button" data-id="' + escapeHtml(e.id) + '">' +
+      '<div class="when">' + escapeHtml(prettyDate(e.date)) + "</div>" +
+      '<div class="money ' + (isPay ? "minus" : "plus") + '">' + amt + "</div>" +
+      '<div class="meta">' + escapeHtml(main) + "</div>" +
+      '<div class="bal">Balance ' + money(balanceAfter.get(e.id) || 0) + "</div>" +
+      note + "</button>";
+  }).join("");
+}
+
+function closeSheet() {
+  document.getElementById("sheetHost").innerHTML = "";
+}
+function openSheet(html) {
+  document.getElementById("sheetHost").innerHTML = '<div class="sheet-back" id="sheetBack"><div class="sheet" role="dialog">' + html + "</div></div>";
+  document.getElementById("sheetBack").addEventListener("click", (ev) => {
+    if (ev.target.id === "sheetBack") closeSheet();
+  });
+}
+
+function entryById(id) {
+  return state.entries.find(e => e.id === id);
+}
+
+function openHours(existing) {
+  const e = existing || { date: todayISO(), hours: "", minutes: "", note: "", rate: state.rate };
+  openSheet(
+    '<div class="grab"></div><h3>' + (existing ? "Edit hours" : "Log hours") + "</h3>" +
+    '<label for="date">Date worked</label><input id="date" type="date" value="' + escapeHtml(e.date) + '">' +
+    '<div class="split"><div><label for="hours">Hours</label><input id="hours" inputmode="numeric" type="number" min="0" step="1" value="' + escapeHtml(e.hours) + '"></div>' +
+    '<div><label for="minutes">Minutes</label><input id="minutes" inputmode="numeric" type="number" min="0" max="59" step="1" value="' + escapeHtml(e.minutes) + '"></div></div>' +
+    '<div class="chips" id="chips">' +
+    [4, 6, 7.5, 8, 10].map(n => '<button type="button" data-h="' + n + '">' + n + "h</button>").join("") +
+    "</div>" +
+    '<label for="rate">Rate for this day</label><input id="rate" inputmode="decimal" type="number" min="0" step="0.01" value="' + escapeHtml(e.rate) + '">' +
+    '<label for="note">Note (optional)</label><textarea id="note" maxlength="240">' + escapeHtml(e.note || "") + "</textarea>" +
+    '<div class="preview" id="preview"></div>' +
+    '<div class="sheet-actions">' +
+    '<button class="ghost" id="cancel" type="button">Cancel</button>' +
+    '<button class="primary" id="save" type="button">Save</button>' +
+    (existing ? '<button class="danger full" id="del" type="button">Delete this day</button>' : "") +
+    "</div>"
+  );
+  const hours = document.getElementById("hours");
+  const minutes = document.getElementById("minutes");
+  const rate = document.getElementById("rate");
+  const preview = document.getElementById("preview");
+  function paint() {
+    const h = Number(hours.value) || 0;
+    const m = Number(minutes.value) || 0;
+    const r = Number(rate.value) || 0;
+    const amt = round2((h + m / 60) * r);
+    preview.textContent = (h || m) && r ? "This day adds " + money(amt) : "Enter hours to see the amount";
+  }
+  paint();
+  [hours, minutes, rate].forEach(el => el.addEventListener("input", paint));
+  document.getElementById("chips").addEventListener("click", (ev) => {
+    const btn = ev.target.closest("button");
+    if (!btn) return;
+    const n = Number(btn.dataset.h);
+    hours.value = Math.floor(n);
+    minutes.value = Math.round((n - Math.floor(n)) * 60);
+    paint();
+  });
+  document.getElementById("cancel").onclick = closeSheet;
+  document.getElementById("save").onclick = () => {
+    const date = document.getElementById("date").value;
+    const h = Number(hours.value) || 0;
+    const m = Number(minutes.value) || 0;
+    const r = Number(rate.value);
+    if (!date) return alert("Pick the date worked.");
+    if (h < 0 || m < 0 || m > 59 || (h === 0 && m === 0)) return alert("Enter the hours worked.");
+    if (!(r > 0)) return alert("Rate needs to be more than zero.");
+    const next = {
+      id: existing ? existing.id : uid(),
+      type: "hours",
+      date,
+      hours: h,
+      minutes: m,
+      rate: round2(r),
+      amount: round2((h + m / 60) * r),
+      note: document.getElementById("note").value.trim(),
+      createdAt: existing ? existing.createdAt : Date.now()
+    };
+    state.entries = existing ? state.entries.map(x => x.id === existing.id ? next : x) : state.entries.concat(next);
+    save(state);
+    closeSheet();
+    render();
+  };
+  const del = document.getElementById("del");
+  if (del) del.onclick = () => {
+    if (!confirm("Delete this day?")) return;
+    state.entries = state.entries.filter(x => x.id !== existing.id);
+    save(state);
+    closeSheet();
+    render();
+  };
+}
+
+function openPay(existing) {
+  const e = existing || { date: todayISO(), amount: "", note: "" };
+  openSheet(
+    '<div class="grab"></div><h3>' + (existing ? "Edit payment" : "Payment received") + "</h3>" +
+    '<label for="date">Date received</label><input id="date" type="date" value="' + escapeHtml(e.date) + '">' +
+    '<label for="amount">Amount</label><input id="amount" inputmode="decimal" type="number" min="0" step="0.01" value="' + escapeHtml(e.amount) + '" placeholder="0.00">' +
+    '<label for="note">Note (optional)</label><textarea id="note" maxlength="240" placeholder="e-transfer, cash, cheque...">' + escapeHtml(e.note || "") + "</textarea>" +
+    '<p class="fine">Payments reduce the amount still owed. They do not change the hours already logged.</p>' +
+    '<div class="sheet-actions">' +
+    '<button class="ghost" id="cancel" type="button">Cancel</button>' +
+    '<button class="primary" id="save" type="button">Save</button>' +
+    (existing ? '<button class="danger full" id="del" type="button">Delete this payment</button>' : "") +
+    "</div>"
+  );
+  document.getElementById("cancel").onclick = closeSheet;
+  document.getElementById("save").onclick = () => {
+    const date = document.getElementById("date").value;
+    const amount = round2(document.getElementById("amount").value);
+    if (!date) return alert("Pick the date the payment came in.");
+    if (!(amount > 0)) return alert("Enter the payment amount.");
+    const owingNow = totals(state.entries.filter(x => !existing || x.id !== existing.id)).owing;
+    if (amount > owingNow + 0.001 && !confirm("This is more than what's currently owing. Save it anyway?")) return;
+    const next = {
+      id: existing ? existing.id : uid(),
+      type: "payment",
+      date,
+      amount,
+      note: document.getElementById("note").value.trim(),
+      createdAt: existing ? existing.createdAt : Date.now()
+    };
+    state.entries = existing ? state.entries.map(x => x.id === existing.id ? next : x) : state.entries.concat(next);
+    save(state);
+    closeSheet();
+    render();
+  };
+  const del = document.getElementById("del");
+  if (del) del.onclick = () => {
+    if (!confirm("Delete this payment?")) return;
+    state.entries = state.entries.filter(x => x.id !== existing.id);
+    save(state);
+    closeSheet();
+    render();
+  };
+}
+
+function rangeFor(kind) {
+  const today = todayISO();
+  if (kind === "week") return { from: startOfWeek(today), to: today };
+  if (kind === "month") return { from: startOfMonth(today), to: today };
+  const dates = state.entries.map(e => e.date).sort();
+  return { from: dates[0] || today, to: today };
+}
+function openEmail() {
+  const start = rangeFor("week");
+  openSheet(
+    '<div class="grab"></div><h3>Email hours</h3>' +
+    '<label for="boss">Boss email</label><input id="boss" type="email" inputmode="email" autocomplete="email" value="' + escapeHtml(state.bossEmail || "") + '" placeholder="boss@email.com">' +
+    '<label for="worker">His name on the report</label><input id="worker" type="text" maxlength="80" value="' + escapeHtml(state.workerName || "") + '" placeholder="Optional">' +
+    '<label>Period</label><div class="chips" id="ranges">' +
+    '<button type="button" data-range="week">This week</button>' +
+    '<button type="button" data-range="month">This month</button>' +
+    '<button type="button" data-range="all">All</button>' +
+    '<button type="button" data-range="custom">Custom</button></div>' +
+    '<div class="split" id="customDates"><div><label for="from">From</label><input id="from" type="date" value="' + start.from + '"></div>' +
+    '<div><label for="to">To</label><input id="to" type="date" value="' + start.to + '"></div></div>' +
+    '<label class="check"><input id="includePay" type="checkbox"> Include payments and what is still owed</label>' +
+    '<pre class="report" id="reportPreview"></pre>' +
+    '<p class="fine">This opens his email app with the report filled in. Nothing is sent until he presses Send.</p>' +
+    '<div class="sheet-actions">' +
+    '<button class="ghost" id="cancel" type="button">Cancel</button>' +
+    '<button class="primary" id="sendMail" type="button">Open email</button>' +
+    '<button class="ghost full" id="copyReport" type="button">Copy report</button>' +
+    "</div>"
+  );
+  const fromEl = document.getElementById("from");
+  const toEl = document.getElementById("to");
+  const preview = document.getElementById("reportPreview");
+  function currentRange() {
+    return { from: fromEl.value, to: toEl.value };
+  }
+  function paint() {
+    const range = currentRange();
+    if (!range.from || !range.to || range.from > range.to) {
+      preview.textContent = "Pick a start date that is on or before the end date.";
+      return;
+    }
+    preview.textContent = buildReport({
+      entries: state.entries,
+      workerName: document.getElementById("worker").value.trim(),
+      rate: state.rate
+    }, range.from, range.to, document.getElementById("includePay").checked);
+  }
+  function mark(kind) {
+    document.querySelectorAll("#ranges button").forEach(b => b.classList.toggle("on", b.dataset.range === kind));
+  }
+  mark("week");
+  paint();
+  document.getElementById("ranges").onclick = (ev) => {
+    const btn = ev.target.closest("button");
+    if (!btn) return;
+    mark(btn.dataset.range);
+    if (btn.dataset.range !== "custom") {
+      const range = rangeFor(btn.dataset.range);
+      fromEl.value = range.from;
+      toEl.value = range.to;
+    }
+    paint();
+  };
+  [fromEl, toEl].forEach(el => el.addEventListener("input", () => { mark("custom"); paint(); }));
+  document.getElementById("worker").addEventListener("input", paint);
+  document.getElementById("includePay").addEventListener("change", paint);
+  document.getElementById("cancel").onclick = closeSheet;
+  function remember() {
+    const email = document.getElementById("boss").value.trim();
+    const name = document.getElementById("worker").value.trim();
+    if (email && !validEmail(email)) return null;
+    state.bossEmail = email;
+    state.workerName = name;
+    save(state);
+    return email;
+  }
+  document.getElementById("copyReport").onclick = async () => {
+    if (remember() === null) return alert("That boss email doesn't look right.");
+    const text = preview.textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Report copied. Paste it into an email if the mail app doesn't open.");
+    } catch {
+      alert("Couldn't copy automatically. Select the report and copy it.");
+    }
+  };
+  document.getElementById("sendMail").onclick = () => {
+    const email = remember();
+    if (email === null) return alert("That boss email doesn't look right.");
+    if (!email) return alert("Enter the boss email first. It will be remembered on this phone.");
+    const range = currentRange();
+    if (!range.from || !range.to || range.from > range.to) return alert("Check the dates.");
+    const body = preview.textContent;
+    if (!body || body.indexOf("No hours") === 0 || body.indexOf("No hours") > 0 && body.indexOf("Total hours") === -1) {
+      if (!confirm("There are no hours in that period. Open the email anyway?")) return;
+    }
+    const who = state.workerName ? state.workerName + " — " : "";
+    const subject = who + "Hours " + range.from + " to " + range.to;
+    const href = "mailto:" + encodeURIComponent(email) + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+    if (href.length > 1900) {
+      alert("That report is too long for a phone email link. Use a shorter period, or copy the report and paste it.");
+      return;
+    }
+    window.location.href = href;
+  };
+}
+function openSettings() {
+  const t = totals(state.entries);
+  openSheet(
+    '<div class="grab"></div><h3>Settings</h3>' +
+    '<label for="worker">His name</label><input id="worker" type="text" maxlength="80" value="' + escapeHtml(state.workerName || "") + '">' +
+    '<label for="boss">Boss email</label><input id="boss" type="email" inputmode="email" value="' + escapeHtml(state.bossEmail || "") + '">' +
+    '<label for="defaultRate">Default hourly rate</label><input id="defaultRate" type="number" min="0" step="0.01" value="' + state.rate + '">' +
+    '<p class="fine">New days use this rate. Changing it does not rewrite days already logged. The boss email is only used when he taps Email hours.</p>' +
+    '<div class="sheet-actions">' +
+    '<button class="ghost" id="cancel" type="button">Close</button>' +
+    '<button class="primary" id="saveRate" type="button">Save</button>' +
+    '<button class="ghost full" id="exportBtn" type="button">Download backup</button>' +
+    '<button class="ghost full" id="importBtn" type="button">Restore backup</button>' +
+    '<button class="danger full" id="wipe" type="button">Erase everything on this phone</button>' +
+    "</div>" +
+    '<p class="fine">Right now: ' + money(t.earned) + " earned, " + money(t.paid) + " received, " + money(t.owing) + " still owed. Data stays in this browser only. Back it up if you clear Chrome data.</p>" +
+    '<input id="importFile" class="hidden" type="file" accept="application/json,.json">'
+  );
+  document.getElementById("cancel").onclick = closeSheet;
+  document.getElementById("saveRate").onclick = () => {
+    const r = Number(document.getElementById("defaultRate").value);
+    const email = document.getElementById("boss").value.trim();
+    if (!(r > 0)) return alert("Rate needs to be more than zero.");
+    if (email && !validEmail(email)) return alert("That boss email doesn't look right.");
+    state.rate = round2(r);
+    state.bossEmail = email;
+    state.workerName = document.getElementById("worker").value.trim();
+    save(state);
+    closeSheet();
+    render();
+  };
+  document.getElementById("exportBtn").onclick = () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "owing-backup-" + todayISO() + ".json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  document.getElementById("importBtn").onclick = () => document.getElementById("importFile").click();
+  document.getElementById("importFile").onchange = async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    try {
+      const next = JSON.parse(await file.text());
+      if (!next || !Array.isArray(next.entries)) throw new Error("bad");
+      if (!confirm("Replace the ledger on this phone with this backup?")) return;
+      state = {
+        rate: Number(next.rate) > 0 ? round2(next.rate) : DEFAULT_RATE,
+        bossEmail: String(next.bossEmail || "").trim(),
+        workerName: String(next.workerName || "").trim(),
+        entries: next.entries.filter(e => e && e.id && e.date && (e.type === "hours" || e.type === "payment"))
+      };
+      save(state);
+      closeSheet();
+      render();
+    } catch {
+      alert("That file isn't a usable backup.");
+    }
+  };
+  document.getElementById("wipe").onclick = () => {
+    if (!confirm("Erase all hours and payments on this phone?")) return;
+    state = { rate: state.rate, bossEmail: state.bossEmail || "", workerName: state.workerName || "", entries: [] };
+    save(state);
+    closeSheet();
+    render();
+  };
+}
+
+document.getElementById("addHours").onclick = () => openHours();
+document.getElementById("addPay").onclick = () => openPay();
+document.getElementById("emailReport").onclick = () => openEmail();
+document.getElementById("settingsBtn").onclick = openSettings;
+document.getElementById("filters").onclick = (ev) => {
+  const btn = ev.target.closest("button");
+  if (!btn) return;
+  filter = btn.dataset.filter;
+  document.querySelectorAll("#filters button").forEach(b => b.classList.toggle("on", b === btn));
+  render();
+};
+document.getElementById("list").onclick = (ev) => {
+  const row = ev.target.closest("[data-id]");
+  if (!row) return;
+  const entry = entryById(row.dataset.id);
+  if (!entry) return;
+  if (entry.type === "payment") openPay(entry);
+  else openHours(entry);
+};
+render();
+</script>
+</body>
+</html>
