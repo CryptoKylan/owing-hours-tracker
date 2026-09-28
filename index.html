@@ -781,6 +781,7 @@ function openHours(existing) {
     hours.value = Math.floor(n);
     minutes.value = Math.round((n - Math.floor(n)) * 60);
     paint();
+    updateSecondSiteOption();
   });
   document.getElementById("cancel").onclick = closeSheet;
   document.getElementById("addJobSite").onclick = () => addJobSite(document.getElementById("jobSite"));

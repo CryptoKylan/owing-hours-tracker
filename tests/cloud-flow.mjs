@@ -51,14 +51,14 @@ try {
   await page.getByRole("button", { name: "Log hours", exact: true }).click();
   if (await page.locator("#hours2").isVisible()) throw new Error("Daily second-site fields should start hidden.");
   await page.locator("#date").fill("2026-09-28");
-  await page.locator("#hours").fill("1");
+  await page.getByRole("button", { name: "8h", exact: true }).click();
   await page.locator("#jobSite").selectOption("Site Alpha");
   await page.getByRole("button", { name: "Add another job site", exact: true }).click();
   await page.locator("#hours2").fill("2");
   await page.locator("#jobSite2").selectOption("Site Beta");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   const dailyRows = await page.locator(".row .meta").allInnerTexts();
-  if (!dailyRows.some(text => text.startsWith("1 hr") && text.includes("Site Alpha"))) throw new Error("Daily form did not save first-site hours.");
+  if (!dailyRows.some(text => text.startsWith("8 hrs") && text.includes("Site Alpha"))) throw new Error("Daily form did not save first-site hours.");
   if (!dailyRows.some(text => text.startsWith("2 hrs") && text.includes("Site Beta"))) throw new Error("Daily form did not save second-site hours.");
 
   await page.getByRole("button", { name: "Log expense", exact: true }).click();
@@ -83,7 +83,7 @@ try {
   await page.locator("#includePay").check();
   const report = await page.locator("#reportPreview").innerText();
   if (!report.includes("Site Alpha") || !report.includes("Site Beta")) throw new Error("Shared report did not list both job sites.");
-  if (!report.includes("Total hours: 11 hrs")) throw new Error("Hours from both job sites were not totaled correctly.");
+  if (!report.includes("Total hours: 18 hrs")) throw new Error("Hours from both job sites were not totaled correctly.");
   const sharedUrl = report.split("\n").find(line => line.startsWith("http"));
   if (!sharedUrl) throw new Error("Read-only report link was not added to the report.");
 
