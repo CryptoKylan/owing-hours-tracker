@@ -93,7 +93,7 @@
   }
   .stats {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
     gap: 10px;
     margin: 12px 0 16px;
   }
@@ -104,7 +104,7 @@
     padding: 12px 14px;
   }
   .stat span { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
-  .stat strong { display: block; margin-top: 4px; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .stat strong { display: block; margin-top: 4px; font-size: 16px; font-variant-numeric: tabular-nums; }
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .actions button, .primary, .ghost, .danger {
     border: 0;
@@ -114,6 +114,7 @@
   }
   .actions .hours { background: var(--green); color: white; }
   .actions .pay { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
+  .actions .expense { grid-column: 1 / -1; background: var(--amber-soft); color: var(--amber); border: 1px solid #fed7aa; }
   .actions .mail { grid-column: 1 / -1; background: var(--ink); color: white; }
   pre.report {
     white-space: pre-wrap;
@@ -136,7 +137,7 @@
     margin: 22px 0 10px;
   }
   .section-head h2 { margin: 0; font-size: 16px; }
-  .filters { display: flex; gap: 6px; }
+  .filters { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
   .filters button {
     border: 1px solid var(--line);
     background: transparent;
@@ -164,6 +165,7 @@
   .row .money { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
   .row .money.plus { color: var(--green); }
   .row .money.minus { color: var(--amber); }
+  .row .money.expense { color: var(--danger); }
   .row .bal { color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
   .empty {
     border: 1px dashed var(--line);
@@ -230,6 +232,7 @@
   .danger { background: #fff1f2; color: var(--danger); border: 1px solid #fecdd3; }
   .full { grid-column: 1 / -1; }
   .fine { color: var(--muted); font-size: 13px; line-height: 1.4; margin: 8px 0 0; }
+  .receipt-preview { display: block; width: 100%; max-height: 260px; object-fit: contain; border: 1px solid var(--line); border-radius: 12px; background: white; margin-top: 10px; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -249,11 +252,13 @@
   </section>
   <div class="stats">
     <div class="stat"><span>Earned</span><strong id="earnedStat">$0.00</strong></div>
+    <div class="stat"><span>Expenses</span><strong id="expenseStat">$0.00</strong></div>
     <div class="stat"><span>Paid</span><strong id="paidStat">$0.00</strong></div>
   </div>
   <div class="actions">
     <button class="hours" id="addHours" type="button">Log hours</button>
     <button class="pay" id="addPay" type="button">Log payment</button>
+    <button class="expense" id="addExpense" type="button">Log job expense + receipt</button>
     <button class="mail" id="emailReport" type="button">Email or text hours</button>
   </div>
   <div class="section-head">
@@ -261,6 +266,7 @@
     <div class="filters" id="filters">
       <button type="button" data-filter="all" class="on">All</button>
       <button type="button" data-filter="hours">Hours</button>
+      <button type="button" data-filter="expense">Expenses</button>
       <button type="button" data-filter="payment">Payments</button>
     </div>
   </div>
@@ -279,7 +285,7 @@ function load() {
       rate: Number(raw.rate) > 0 ? Number(raw.rate) : DEFAULT_RATE,
       bossEmail: String(raw.bossEmail || "").trim(),
       workerName: String(raw.workerName || "").trim(),
-      entries: raw.entries.filter(e => e && (e.type === "hours" || e.type === "payment") && e.date)
+      entries: raw.entries.filter(e => e && (e.type === "hours" || e.type === "payment" || e.type === "expense") && e.date)
     };
   } catch {
     return blankState();
@@ -290,6 +296,68 @@ function blankState() {
 }
 function save(state) {
   localStorage.setItem(KEY, JSON.stringify(state));
+}
+const RECEIPT_DB = "owing-receipts-v1";
+let receiptDbPromise;
+function receiptDb() {
+  if (!receiptDbPromise) receiptDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(RECEIPT_DB, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("receipts", { keyPath: "id" });
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  return receiptDbPromise;
+}
+async function receiptRequest(mode, action) {
+  const db = await receiptDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("receipts", mode);
+    const store = tx.objectStore("receipts");
+    const request = action(store);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+function receiptGet(id) { return receiptRequest("readonly", store => store.get(id)); }
+function receiptPut(id, blob, name) { return receiptRequest("readwrite", store => store.put({ id, blob, name: name || "receipt.jpg", updatedAt: Date.now() })); }
+function receiptDelete(id) { return receiptRequest("readwrite", store => store.delete(id)); }
+function receiptAll() { return receiptRequest("readonly", store => store.getAll()); }
+function receiptClear() { return receiptRequest("readwrite", store => store.clear()); }
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+function dataUrlToBlob(dataUrl) {
+  const parts = String(dataUrl).split(",");
+  const mime = (parts[0].match(/data:([^;]+)/) || [])[1] || "image/jpeg";
+  const binary = atob(parts[1] || "");
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  return new Blob([bytes], { type: mime });
+}
+async function compressReceipt(file) {
+  if (!file || !String(file.type).startsWith("image/")) throw new Error("Pick an image file.");
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("That receipt image could not be opened."));
+      img.src = url;
+    });
+    const maxSide = 1400;
+    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+    return await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Could not prepare that receipt.")), "image/jpeg", 0.78));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 function toISO(d) {
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -319,6 +387,7 @@ function buildReport(data, from, to, includePay) {
   const inRange = data.entries.filter(e => e.date >= from && e.date <= to);
   const hours = inRange.filter(e => e.type === "hours").sort(byDate);
   const pays = inRange.filter(e => e.type === "payment").sort(byDate);
+  const expenses = inRange.filter(e => e.type === "expense").sort(byDate);
   const lines = [];
   lines.push(data.workerName ? data.workerName + " — hours report" : "Hours report");
   lines.push(prettyDate(from) + " to " + prettyDate(to));
@@ -336,6 +405,10 @@ function buildReport(data, from, to, includePay) {
     lines.push("Amount for these hours: " + money(t.earned));
   }
   if (includePay) {
+    lines.push("");
+    lines.push("Job expenses in this period");
+    if (!expenses.length) lines.push("None");
+    else expenses.forEach(e => lines.push(prettyDate(e.date) + " — " + money(expenseOf(e)) + " — " + (e.category || "Job expense") + (e.note ? " — " + e.note : "") + (e.hasReceipt ? " — receipt saved" : "")));
     lines.push("");
     lines.push("Payments in this period");
     if (!pays.length) lines.push("None");
@@ -383,14 +456,18 @@ function earnedOf(entry) {
 function paidOf(entry) {
   return entry.type === "payment" ? round2(entry.amount || 0) : 0;
 }
+function expenseOf(entry) {
+  return entry.type === "expense" ? round2(entry.amount || 0) : 0;
+}
 function totals(entries) {
-  let earned = 0, paid = 0, hours = 0;
+  let earned = 0, expenses = 0, paid = 0, hours = 0;
   for (const e of entries) {
     earned += earnedOf(e);
+    expenses += expenseOf(e);
     paid += paidOf(e);
     if (e.type === "hours") hours += hoursOf(e);
   }
-  return { earned: round2(earned), paid: round2(paid), owing: round2(earned - paid), hours };
+  return { earned: round2(earned), expenses: round2(expenses), paid: round2(paid), owing: round2(earned + expenses - paid), hours };
 }
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, function (c) {
@@ -426,16 +503,17 @@ function render() {
   }
   const hourLabel = (Math.round(t.hours * 100) / 100).toLocaleString("en-CA", { maximumFractionDigits: 2 });
   document.getElementById("owingSub").textContent = t.hours
-    ? hourLabel + " hrs logged · " + money(t.earned) + " earned · " + money(t.paid) + " received"
-    : "Log hours at the end of a work day";
+    ? hourLabel + " hrs · " + money(t.expenses) + " expenses · " + money(t.paid) + " received"
+    : (t.expenses ? money(t.expenses) + " in job expenses" : "Log hours at the end of a work day");
   document.getElementById("earnedStat").textContent = money(t.earned);
+  document.getElementById("expenseStat").textContent = money(t.expenses);
   document.getElementById("paidStat").textContent = money(t.paid);
 
   const sorted = [...state.entries].sort((a, b) => (a.date === b.date ? (a.createdAt || 0) - (b.createdAt || 0) : a.date < b.date ? -1 : 1));
   const balanceAfter = new Map();
   let run = 0;
   for (const e of sorted) {
-    run = round2(run + earnedOf(e) - paidOf(e));
+    run = round2(run + earnedOf(e) + expenseOf(e) - paidOf(e));
     balanceAfter.set(e.id, run);
   }
   const visible = sorted.filter(e => filter === "all" || e.type === filter).reverse();
@@ -446,12 +524,13 @@ function render() {
   }
   list.innerHTML = visible.map(e => {
     const isPay = e.type === "payment";
-    const main = isPay ? "Payment received" : formatHours(e) + " · " + money(Number(e.rate) || state.rate) + "/hr";
-    const amt = isPay ? "−" + money(paidOf(e)) : "+" + money(earnedOf(e));
+    const isExpense = e.type === "expense";
+    const main = isPay ? "Payment received" : isExpense ? (e.category || "Job expense") + (e.hasReceipt ? " · Receipt attached" : "") : formatHours(e) + " · " + money(Number(e.rate) || state.rate) + "/hr";
+    const amt = isPay ? "−" + money(paidOf(e)) : isExpense ? "+" + money(expenseOf(e)) : "+" + money(earnedOf(e));
     const note = e.note ? '<div class="note">' + escapeHtml(e.note) + "</div>" : "";
     return '<button class="row" type="button" data-id="' + escapeHtml(e.id) + '">' +
       '<div class="when">' + escapeHtml(prettyDate(e.date)) + "</div>" +
-      '<div class="money ' + (isPay ? "minus" : "plus") + '">' + amt + "</div>" +
+      '<div class="money ' + (isPay ? "minus" : isExpense ? "expense" : "plus") + '">' + amt + "</div>" +
       '<div class="meta">' + escapeHtml(main) + "</div>" +
       '<div class="bal">Balance ' + money(balanceAfter.get(e.id) || 0) + "</div>" +
       note + "</button>";
@@ -592,6 +671,112 @@ function openPay(existing) {
   };
 }
 
+function openExpense(existing) {
+  const e = existing || { date: todayISO(), amount: "", category: "Gas", note: "", hasReceipt: false };
+  const expenseId = existing ? existing.id : uid();
+  let pendingReceipt = null;
+  let removeReceipt = false;
+  let previewUrl = "";
+  openSheet(
+    '<div class="grab"></div><h3>' + (existing ? "Edit job expense" : "Log job expense") + "</h3>" +
+    '<label for="date">Purchase date</label><input id="date" type="date" value="' + escapeHtml(e.date) + '">' +
+    '<label for="amount">Amount paid</label><input id="amount" inputmode="decimal" type="number" min="0" step="0.01" value="' + escapeHtml(e.amount) + '" placeholder="0.00">' +
+    '<label for="category">What was it for?</label><input id="category" type="text" maxlength="80" list="expenseKinds" value="' + escapeHtml(e.category || "") + '" placeholder="Gas, materials, parking...">' +
+    '<datalist id="expenseKinds"><option value="Gas"><option value="Materials"><option value="Parking or tolls"><option value="Meals"><option value="Other"></datalist>' +
+    '<label for="note">Note (optional)</label><textarea id="note" maxlength="240" placeholder="Job site or reason for the expense">' + escapeHtml(e.note || "") + "</textarea>" +
+    '<label for="receiptInput">Receipt photo (optional)</label><input id="receiptInput" type="file" accept="image/*" capture="environment">' +
+    '<img id="receiptPreview" class="receipt-preview hidden" alt="Receipt preview">' +
+    '<div class="chips"><button id="removeReceipt" class="hidden" type="button">Remove receipt</button></div>' +
+    '<p class="fine">Receipt photos stay on this phone. The backup download includes them.</p>' +
+    '<div class="preview">This expense increases the amount still owed until a reimbursement is logged as a payment.</div>' +
+    '<div class="sheet-actions">' +
+    '<button class="ghost" id="cancel" type="button">Cancel</button>' +
+    '<button class="primary" id="save" type="button">Save expense</button>' +
+    (existing ? '<button class="danger full" id="del" type="button">Delete this expense</button>' : "") +
+    "</div>"
+  );
+  const preview = document.getElementById("receiptPreview");
+  const removeBtn = document.getElementById("removeReceipt");
+  function showReceipt(blob) {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(blob);
+    preview.src = previewUrl;
+    preview.classList.remove("hidden");
+    removeBtn.classList.remove("hidden");
+  }
+  if (e.hasReceipt) receiptGet(expenseId).then(record => {
+    if (record && record.blob) showReceipt(record.blob);
+  }).catch(() => {});
+  document.getElementById("receiptInput").onchange = async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    try {
+      pendingReceipt = await compressReceipt(file);
+      removeReceipt = false;
+      showReceipt(pendingReceipt);
+    } catch (error) {
+      alert(error.message || "That receipt photo could not be opened.");
+      ev.target.value = "";
+    }
+  };
+  removeBtn.onclick = () => {
+    pendingReceipt = null;
+    removeReceipt = true;
+    document.getElementById("receiptInput").value = "";
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = "";
+    preview.src = "";
+    preview.classList.add("hidden");
+    removeBtn.classList.add("hidden");
+  };
+  document.getElementById("cancel").onclick = closeSheet;
+  document.getElementById("save").onclick = async () => {
+    const date = document.getElementById("date").value;
+    const amount = round2(document.getElementById("amount").value);
+    const category = document.getElementById("category").value.trim();
+    if (!date) return alert("Pick the purchase date.");
+    if (!(amount > 0)) return alert("Enter the amount paid.");
+    if (!category) return alert("Enter what the expense was for.");
+    let hasReceipt = Boolean(e.hasReceipt);
+    try {
+      if (pendingReceipt) {
+        await receiptPut(expenseId, pendingReceipt, "receipt.jpg");
+        hasReceipt = true;
+      } else if (removeReceipt) {
+        await receiptDelete(expenseId);
+        hasReceipt = false;
+      }
+    } catch {
+      return alert("The receipt could not be saved on this phone. The expense has not been changed.");
+    }
+    const next = {
+      id: expenseId,
+      type: "expense",
+      date,
+      amount,
+      category,
+      note: document.getElementById("note").value.trim(),
+      hasReceipt,
+      createdAt: existing ? existing.createdAt : Date.now()
+    };
+    state.entries = existing ? state.entries.map(x => x.id === existing.id ? next : x) : state.entries.concat(next);
+    save(state);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    closeSheet();
+    render();
+  };
+  const del = document.getElementById("del");
+  if (del) del.onclick = async () => {
+    if (!confirm("Delete this expense and its receipt?")) return;
+    try { await receiptDelete(existing.id); } catch {}
+    state.entries = state.entries.filter(x => x.id !== existing.id);
+    save(state);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    closeSheet();
+    render();
+  };
+}
+
 function rangeFor(kind) {
   const today = todayISO();
   if (kind === "week") return { from: startOfWeek(today), to: today };
@@ -612,7 +797,7 @@ function openEmail() {
     '<button type="button" data-range="custom">Custom</button></div>' +
     '<div class="split" id="customDates"><div><label for="from">From</label><input id="from" type="date" value="' + start.from + '"></div>' +
     '<div><label for="to">To</label><input id="to" type="date" value="' + start.to + '"></div></div>' +
-    '<label class="check"><input id="includePay" type="checkbox"> Include payments and what is still owed</label>' +
+    '<label class="check"><input id="includePay" type="checkbox"> Include expenses, payments, and what is still owed</label>' +
     '<pre class="report" id="reportPreview"></pre>' +
     '<p class="fine">Choose email or text. The report is filled in, but nothing is sent until he presses Send in that app.</p>' +
     '<div class="sheet-actions">' +
@@ -731,7 +916,7 @@ function openSettings() {
     '<button class="ghost full" id="importBtn" type="button">Restore backup</button>' +
     '<button class="danger full" id="wipe" type="button">Erase everything on this phone</button>' +
     "</div>" +
-    '<p class="fine">Right now: ' + money(t.earned) + " earned, " + money(t.paid) + " received, " + money(t.owing) + " still owed. Data stays in this browser only. Back it up if you clear Chrome data.</p>" +
+    '<p class="fine">Right now: ' + money(t.earned) + " earned, " + money(t.expenses) + " in expenses, " + money(t.paid) + " received, " + money(t.owing) + " still owed. Data and receipt photos stay in this browser only. Back them up if you clear Chrome data.</p>" +
     '<input id="importFile" class="hidden" type="file" accept="application/json,.json">'
   );
   document.getElementById("cancel").onclick = closeSheet;
@@ -747,13 +932,20 @@ function openSettings() {
     closeSheet();
     render();
   };
-  document.getElementById("exportBtn").onclick = () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "owing-backup-" + todayISO() + ".json";
-    a.click();
-    URL.revokeObjectURL(a.href);
+  document.getElementById("exportBtn").onclick = async () => {
+    try {
+      const storedReceipts = await receiptAll();
+      const receipts = await Promise.all(storedReceipts.map(async record => ({ id: record.id, name: record.name, data: await blobToDataUrl(record.blob) })));
+      const backup = { ...state, receipts };
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "owing-backup-" + todayISO() + ".json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      alert("The backup could not be created. Try again before clearing browser data.");
+    }
   };
   document.getElementById("importBtn").onclick = () => document.getElementById("importFile").click();
   document.getElementById("importFile").onchange = async (ev) => {
@@ -767,8 +959,12 @@ function openSettings() {
         rate: Number(next.rate) > 0 ? round2(next.rate) : DEFAULT_RATE,
         bossEmail: String(next.bossEmail || "").trim(),
         workerName: String(next.workerName || "").trim(),
-        entries: next.entries.filter(e => e && e.id && e.date && (e.type === "hours" || e.type === "payment"))
+        entries: next.entries.filter(e => e && e.id && e.date && (e.type === "hours" || e.type === "payment" || e.type === "expense"))
       };
+      await receiptClear();
+      for (const record of Array.isArray(next.receipts) ? next.receipts : []) {
+        if (record && record.id && record.data) await receiptPut(record.id, dataUrlToBlob(record.data), record.name || "receipt.jpg");
+      }
       save(state);
       closeSheet();
       render();
@@ -776,8 +972,9 @@ function openSettings() {
       alert("That file isn't a usable backup.");
     }
   };
-  document.getElementById("wipe").onclick = () => {
-    if (!confirm("Erase all hours and payments on this phone?")) return;
+  document.getElementById("wipe").onclick = async () => {
+    if (!confirm("Erase all hours, expenses, payments, and receipt photos on this phone?")) return;
+    try { await receiptClear(); } catch {}
     state = { rate: state.rate, bossEmail: state.bossEmail || "", workerName: state.workerName || "", entries: [] };
     save(state);
     closeSheet();
@@ -787,6 +984,7 @@ function openSettings() {
 
 document.getElementById("addHours").onclick = () => openHours();
 document.getElementById("addPay").onclick = () => openPay();
+document.getElementById("addExpense").onclick = () => openExpense();
 document.getElementById("emailReport").onclick = () => openEmail();
 document.getElementById("settingsBtn").onclick = openSettings;
 document.getElementById("filters").onclick = (ev) => {
@@ -802,6 +1000,7 @@ document.getElementById("list").onclick = (ev) => {
   const entry = entryById(row.dataset.id);
   if (!entry) return;
   if (entry.type === "payment") openPay(entry);
+  else if (entry.type === "expense") openExpense(entry);
   else openHours(entry);
 };
 render();
