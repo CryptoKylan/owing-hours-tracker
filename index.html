@@ -33,7 +33,7 @@
     min-height: 100vh;
     min-height: 100dvh;
   }
-  button, input, textarea { font: inherit; color: inherit; }
+  button, input, textarea, select { font: inherit; color: inherit; }
   button { cursor: pointer; }
   .app {
     max-width: 480px;
@@ -116,8 +116,9 @@
     font-weight: 700;
   }
   .actions .hours { background: var(--green); color: white; }
+  .actions .week { background: var(--green-soft); color: var(--green); border: 1px solid #a7dcc8; }
   .actions .pay { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
-  .actions .expense { grid-column: 1 / -1; background: var(--amber-soft); color: var(--amber); border: 1px solid #fed7aa; }
+  .actions .expense { background: var(--amber-soft); color: var(--amber); border: 1px solid #fed7aa; }
   .actions .mail { grid-column: 1 / -1; background: var(--ink); color: white; }
   pre.report {
     white-space: pre-wrap;
@@ -203,7 +204,7 @@
   }
   .sheet h3 { margin: 0 0 12px; font-size: 20px; }
   label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 6px; font-weight: 650; }
-  input, textarea {
+  input, textarea, select {
     width: 100%;
     border: 1px solid var(--line);
     background: white;
@@ -237,6 +238,12 @@
   .fine { color: var(--muted); font-size: 13px; line-height: 1.4; margin: 8px 0 0; }
   .receipt-preview { display: block; width: 100%; max-height: 260px; object-fit: contain; border: 1px solid var(--line); border-radius: 12px; background: white; margin-top: 10px; }
   .receipt-link { display: block; text-align: center; text-decoration: none; margin-top: 10px; }
+  .week-grid { display: grid; gap: 8px; margin-top: 10px; }
+  .week-row { display: grid; grid-template-columns: 74px 82px 1fr; gap: 8px; align-items: center; }
+  .week-row .day { font-size: 13px; line-height: 1.25; font-weight: 750; }
+  .week-row .day small { display: block; color: var(--muted); font-weight: 500; }
+  .week-row input, .week-row select { padding: 10px; min-width: 0; }
+  .week-row .week-note { grid-column: 2 / -1; }
   body.read-only .actions, body.read-only #settingsBtn { display: none; }
   .hidden { display: none !important; }
 </style>
@@ -263,8 +270,9 @@
   </div>
   <div class="actions">
     <button class="hours" id="addHours" type="button">Log hours</button>
+    <button class="week" id="addWeek" type="button">Log week</button>
     <button class="pay" id="addPay" type="button">Log payment</button>
-    <button class="expense" id="addExpense" type="button">Log job expense + receipt</button>
+    <button class="expense" id="addExpense" type="button">Log expense</button>
     <button class="mail" id="emailReport" type="button">Email or text hours</button>
   </div>
   <div class="section-head">
@@ -307,6 +315,7 @@ function load() {
       rate: Number(raw.rate) > 0 ? Number(raw.rate) : DEFAULT_RATE,
       bossEmail: String(raw.bossEmail || "").trim(),
       workerName: String(raw.workerName || "").trim(),
+      jobSites: cleanJobSites(raw.jobSites),
       entries: raw.entries.filter(e => e && (e.type === "hours" || e.type === "payment" || e.type === "expense") && e.date)
     };
   } catch {
@@ -314,7 +323,10 @@ function load() {
   }
 }
 function blankState() {
-  return { rate: DEFAULT_RATE, entries: [], bossEmail: "", workerName: "" };
+  return { rate: DEFAULT_RATE, entries: [], bossEmail: "", workerName: "", jobSites: [] };
+}
+function cleanJobSites(value) {
+  return [...new Set((Array.isArray(value) ? value : []).map(site => String(site || "").trim()).filter(Boolean))].slice(0, 100);
 }
 function save(state) {
   localStorage.setItem(KEY, JSON.stringify(state));
@@ -382,6 +394,7 @@ async function applyCloudPayload(payload) {
     rate: Number(payload.rate) > 0 ? round2(payload.rate) : DEFAULT_RATE,
     bossEmail: String(payload.bossEmail || "").trim(),
     workerName: String(payload.workerName || "").trim(),
+    jobSites: cleanJobSites(payload.jobSites),
     entries: payload.entries.filter(e => e && e.id && e.date && (e.type === "hours" || e.type === "payment" || e.type === "expense"))
   };
   await receiptClear();
@@ -514,6 +527,7 @@ function buildReport(data, from, to, includePay) {
   else {
     hours.forEach(e => {
       let line = prettyDate(e.date) + " — " + formatHours(e) + " — " + money(earnedOf(e));
+      if (e.jobSite) line += " — " + e.jobSite;
       if (e.note) line += " — " + e.note;
       lines.push(line);
     });
@@ -526,7 +540,7 @@ function buildReport(data, from, to, includePay) {
     lines.push("");
     lines.push("Job expenses in this period");
     if (!expenses.length) lines.push("None");
-    else expenses.forEach(e => lines.push(prettyDate(e.date) + " — " + money(expenseOf(e)) + " — " + (e.category || "Job expense") + (e.note ? " — " + e.note : "") + (e.hasReceipt ? " — receipt saved" : "")));
+    else expenses.forEach(e => lines.push(prettyDate(e.date) + " — " + money(expenseOf(e)) + " — " + (e.category || "Job expense") + (e.jobSite ? " — " + e.jobSite : "") + (e.note ? " — " + e.note : "") + (e.hasReceipt ? " — receipt saved" : "")));
     lines.push("");
     lines.push("Payments in this period");
     if (!pays.length) lines.push("None");
@@ -550,6 +564,11 @@ function todayISO() {
 function parseISO(iso) {
   const [y, m, d] = String(iso).split("-").map(Number);
   return new Date(y, (m || 1) - 1, d || 1);
+}
+function addDaysISO(iso, days) {
+  const d = parseISO(iso);
+  d.setDate(d.getDate() + days);
+  return toISO(d);
 }
 function prettyDate(iso) {
   return parseISO(iso).toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
@@ -591,6 +610,22 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, function (c) {
     return "&#" + c.charCodeAt(0) + ";";
   });
+}
+function jobSiteOptions(selected = "") {
+  const sites = cleanJobSites([...(state.jobSites || []), selected]);
+  return '<option value="">No job site</option>' + sites.map(site => '<option value="' + escapeHtml(site) + '"' + (site === selected ? ' selected' : '') + '>' + escapeHtml(site) + '</option>').join("");
+}
+function addJobSite(selectToChoose = null) {
+  const name = String(prompt("Enter the new job site location:") || "").trim();
+  if (!name) return;
+  if (name.length > 80) return alert("Keep the job site name under 80 characters.");
+  state.jobSites = cleanJobSites([...(state.jobSites || []), name]);
+  save(state);
+  document.querySelectorAll(".job-site-select").forEach(select => {
+    const current = select.value;
+    select.innerHTML = jobSiteOptions(current);
+  });
+  if (selectToChoose) selectToChoose.value = name;
 }
 function formatHours(entry) {
   const totalMin = Math.round(hoursOf(entry) * 60);
@@ -650,7 +685,9 @@ function render() {
   list.innerHTML = visible.map(e => {
     const isPay = e.type === "payment";
     const isExpense = e.type === "expense";
-    const main = isPay ? "Payment received" : isExpense ? (e.category || "Job expense") + (e.hasReceipt ? " · Receipt attached" : "") : formatHours(e) + " · " + money(Number(e.rate) || state.rate) + "/hr";
+    const main = isPay ? "Payment received" : isExpense
+      ? (e.category || "Job expense") + (e.jobSite ? " · " + e.jobSite : "") + (e.hasReceipt ? " · Receipt attached" : "")
+      : formatHours(e) + " · " + money(Number(e.rate) || state.rate) + "/hr" + (e.jobSite ? " · " + e.jobSite : "");
     const amt = isPay ? "−" + money(paidOf(e)) : isExpense ? "+" + money(expenseOf(e)) : "+" + money(earnedOf(e));
     const note = e.note ? '<div class="note">' + escapeHtml(e.note) + "</div>" : "";
     return '<button class="row" type="button" data-id="' + escapeHtml(e.id) + '">' +
@@ -687,6 +724,8 @@ function openHours(existing) {
     [4, 6, 7.5, 8, 10].map(n => '<button type="button" data-h="' + n + '">' + n + "h</button>").join("") +
     "</div>" +
     '<label for="rate">Rate for this day</label><input id="rate" inputmode="decimal" type="number" min="0" step="0.01" value="' + escapeHtml(e.rate) + '">' +
+    '<label for="jobSite">Job site</label><select id="jobSite" class="job-site-select">' + jobSiteOptions(e.jobSite || "") + '</select>' +
+    '<div class="chips"><button id="addJobSite" type="button">Add new job site</button></div>' +
     '<label for="note">Note (optional)</label><textarea id="note" maxlength="240">' + escapeHtml(e.note || "") + "</textarea>" +
     '<div class="preview" id="preview"></div>' +
     '<div class="sheet-actions">' +
@@ -717,6 +756,7 @@ function openHours(existing) {
     paint();
   });
   document.getElementById("cancel").onclick = closeSheet;
+  document.getElementById("addJobSite").onclick = () => addJobSite(document.getElementById("jobSite"));
   document.getElementById("save").onclick = () => {
     const date = document.getElementById("date").value;
     const h = Number(hours.value) || 0;
@@ -733,6 +773,7 @@ function openHours(existing) {
       minutes: m,
       rate: round2(r),
       amount: round2((h + m / 60) * r),
+      jobSite: document.getElementById("jobSite").value,
       note: document.getElementById("note").value.trim(),
       createdAt: existing ? existing.createdAt : Date.now()
     };
@@ -749,6 +790,114 @@ function openHours(existing) {
     closeSheet();
     render();
   };
+}
+
+function openWeek() {
+  const initialMonday = startOfWeek(todayISO());
+  openSheet(
+    '<div class="grab"></div><h3>Log a whole week</h3>' +
+    '<label for="weekStart">Week containing</label><input id="weekStart" type="date" value="' + initialMonday + '">' +
+    '<label for="weekRate">Default rate for new days</label><input id="weekRate" inputmode="decimal" type="number" min="0" step="0.01" value="' + escapeHtml(state.rate) + '">' +
+    '<p class="fine">Enter decimal hours, such as 7.5. Blank days are skipped. Existing hours for this week are prefilled; clearing one removes that day when you save.</p>' +
+    '<div class="chips"><button id="addWeekSite" type="button">Add new job site</button></div>' +
+    '<div class="week-grid" id="weekGrid"></div>' +
+    '<div class="preview" id="weekPreview"></div>' +
+    '<div class="sheet-actions">' +
+    '<button class="ghost" id="cancel" type="button">Cancel</button>' +
+    '<button class="primary" id="saveWeek" type="button">Save week</button>' +
+    '</div>'
+  );
+  const weekStart = document.getElementById("weekStart");
+  const weekRate = document.getElementById("weekRate");
+  const grid = document.getElementById("weekGrid");
+  const preview = document.getElementById("weekPreview");
+  const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  let dates = [];
+  let existingByDate = new Map();
+
+  function paintSummary() {
+    let totalHours = 0;
+    let totalAmount = 0;
+    grid.querySelectorAll(".week-row").forEach(row => {
+      const value = Number(row.querySelector(".week-hours").value) || 0;
+      const existingRate = Number(row.dataset.existingRate) || 0;
+      const rate = existingRate || Number(weekRate.value) || 0;
+      totalHours += value;
+      totalAmount += value * rate;
+    });
+    preview.textContent = totalHours > 0
+      ? hoursLabel(totalHours) + " · " + money(totalAmount)
+      : "Enter hours for one or more days";
+  }
+
+  function buildRows() {
+    const monday = startOfWeek(weekStart.value || todayISO());
+    weekStart.value = monday;
+    dates = dayNames.map((_, index) => addDaysISO(monday, index));
+    existingByDate = new Map(dates.map(date => [date, state.entries.filter(e => e.type === "hours" && e.date === date)]));
+    grid.innerHTML = dates.map((date, index) => {
+      const existing = existingByDate.get(date) || [];
+      const value = existing.length ? Math.round(existing.reduce((sum, entry) => sum + hoursOf(entry), 0) * 100) / 100 : "";
+      const note = existing.map(entry => entry.note).filter(Boolean).join("; ");
+      const existingRate = existing.length ? Number(existing[0].rate) || state.rate : "";
+      const jobSite = existing.length ? existing[0].jobSite || "" : "";
+      return '<div class="week-row" data-date="' + date + '" data-existing-rate="' + escapeHtml(existingRate) + '">' +
+        '<div class="day">' + dayNames[index].slice(0, 3) + '<small>' + escapeHtml(prettyDate(date).replace(/^[^,]+,\s*/, "")) + '</small></div>' +
+        '<input class="week-hours" aria-label="' + dayNames[index] + ' hours" inputmode="decimal" type="number" min="0" max="24" step="0.25" value="' + escapeHtml(value) + '" placeholder="Hours">' +
+        '<select class="week-site job-site-select" aria-label="' + dayNames[index] + ' job site">' + jobSiteOptions(jobSite) + '</select>' +
+        '<input class="week-note" aria-label="' + dayNames[index] + ' note" type="text" maxlength="120" value="' + escapeHtml(note) + '" placeholder="Note (optional)">' +
+        '</div>';
+    }).join("");
+    grid.querySelectorAll("input").forEach(input => input.addEventListener("input", paintSummary));
+    paintSummary();
+  }
+
+  weekStart.addEventListener("change", buildRows);
+  weekRate.addEventListener("input", paintSummary);
+  document.getElementById("addWeekSite").onclick = () => addJobSite();
+  document.getElementById("cancel").onclick = closeSheet;
+  document.getElementById("saveWeek").onclick = () => {
+    const defaultRate = Number(weekRate.value);
+    if (!(defaultRate > 0)) return alert("Rate needs to be more than zero.");
+    const nextHours = [];
+    let invalid = false;
+    grid.querySelectorAll(".week-row").forEach(row => {
+      const input = row.querySelector(".week-hours");
+      const raw = input.value.trim();
+      if (!raw) return;
+      const decimal = Number(raw);
+      if (!(decimal > 0) || decimal > 24) {
+        invalid = true;
+        return;
+      }
+      const totalMinutes = Math.round(decimal * 60);
+      const date = row.dataset.date;
+      const existing = existingByDate.get(date) || [];
+      const rate = Number(row.dataset.existingRate) > 0 ? Number(row.dataset.existingRate) : defaultRate;
+      nextHours.push({
+        id: existing[0]?.id || uid(),
+        type: "hours",
+        date,
+        hours: Math.floor(totalMinutes / 60),
+        minutes: totalMinutes % 60,
+        rate: round2(rate),
+        amount: round2(totalMinutes / 60 * rate),
+        jobSite: row.querySelector(".week-site").value,
+        note: row.querySelector(".week-note").value.trim(),
+        createdAt: existing[0]?.createdAt || Date.now()
+      });
+    });
+    if (invalid) return alert("Each day must be more than 0 and no more than 24 hours.");
+    if (!nextHours.length && !dates.some(date => (existingByDate.get(date) || []).length)) return alert("Enter hours for at least one day.");
+    const existingDays = dates.filter(date => (existingByDate.get(date) || []).length).length;
+    if (existingDays && !confirm("This will replace the existing hours on " + existingDays + " day" + (existingDays === 1 ? "" : "s") + " in this week. Continue?")) return;
+    const weekDates = new Set(dates);
+    state.entries = state.entries.filter(entry => entry.type !== "hours" || !weekDates.has(entry.date)).concat(nextHours);
+    save(state);
+    closeSheet();
+    render();
+  };
+  buildRows();
 }
 
 function openPay(existing) {
@@ -808,6 +957,8 @@ function openExpense(existing) {
     '<label for="amount">Amount paid</label><input id="amount" inputmode="decimal" type="number" min="0" step="0.01" value="' + escapeHtml(e.amount) + '" placeholder="0.00">' +
     '<label for="category">What was it for?</label><input id="category" type="text" maxlength="80" list="expenseKinds" value="' + escapeHtml(e.category || "") + '" placeholder="Gas, materials, parking...">' +
     '<datalist id="expenseKinds"><option value="Gas"><option value="Materials"><option value="Parking or tolls"><option value="Meals"><option value="Other"></datalist>' +
+    '<label for="jobSite">Job site</label><select id="jobSite" class="job-site-select">' + jobSiteOptions(e.jobSite || "") + '</select>' +
+    '<div class="chips"><button id="addExpenseSite" type="button">Add new job site</button></div>' +
     '<label for="note">Note (optional)</label><textarea id="note" maxlength="240" placeholder="Job site or reason for the expense">' + escapeHtml(e.note || "") + "</textarea>" +
     '<label for="receiptInput">Receipt photo (optional)</label><input id="receiptInput" type="file" accept="image/*" capture="environment">' +
     '<img id="receiptPreview" class="receipt-preview hidden" alt="Receipt preview">' +
@@ -822,6 +973,7 @@ function openExpense(existing) {
   );
   const preview = document.getElementById("receiptPreview");
   const removeBtn = document.getElementById("removeReceipt");
+  document.getElementById("addExpenseSite").onclick = () => addJobSite(document.getElementById("jobSite"));
   function showReceipt(blob) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = URL.createObjectURL(blob);
@@ -880,6 +1032,7 @@ function openExpense(existing) {
       date,
       amount,
       category,
+      jobSite: document.getElementById("jobSite").value,
       note: document.getElementById("note").value.trim(),
       hasReceipt,
       createdAt: existing ? existing.createdAt : Date.now()
@@ -911,7 +1064,7 @@ async function openReceiptView(entry) {
     const name = (record && record.name) || (cloudReceipts.get(entry.id) || {}).name || "receipt.jpg";
     openSheet(
       '<div class="grab"></div><h3>' + escapeHtml(entry.category || "Job expense") + '</h3>' +
-      '<p class="fine">' + escapeHtml(prettyDate(entry.date)) + ' · ' + escapeHtml(money(expenseOf(entry))) + (entry.note ? ' · ' + escapeHtml(entry.note) : '') + '</p>' +
+      '<p class="fine">' + escapeHtml(prettyDate(entry.date)) + ' · ' + escapeHtml(money(expenseOf(entry))) + (entry.jobSite ? ' · ' + escapeHtml(entry.jobSite) : '') + (entry.note ? ' · ' + escapeHtml(entry.note) : '') + '</p>' +
       '<img class="receipt-preview" src="' + escapeHtml(data) + '" alt="Receipt for ' + escapeHtml(entry.category || "job expense") + '">' +
       '<a class="primary receipt-link" href="' + escapeHtml(data) + '" download="' + escapeHtml(name) + '">Download receipt</a>' +
       '<button class="ghost full receipt-link" id="closeReceipt" type="button">Close</button>'
@@ -1130,6 +1283,7 @@ function openSettings() {
         rate: Number(next.rate) > 0 ? round2(next.rate) : DEFAULT_RATE,
         bossEmail: String(next.bossEmail || "").trim(),
         workerName: String(next.workerName || "").trim(),
+        jobSites: cleanJobSites(next.jobSites),
         entries: next.entries.filter(e => e && e.id && e.date && (e.type === "hours" || e.type === "payment" || e.type === "expense"))
       };
       await receiptClear();
@@ -1146,7 +1300,7 @@ function openSettings() {
   document.getElementById("wipe").onclick = async () => {
     if (!confirm("Erase all cloud hours, expenses, payments, and receipt photos? This cannot be undone unless you have a backup.")) return;
     try { await receiptClear(); } catch {}
-    state = { rate: state.rate, bossEmail: state.bossEmail || "", workerName: state.workerName || "", entries: [] };
+    state = { rate: state.rate, bossEmail: state.bossEmail || "", workerName: state.workerName || "", jobSites: state.jobSites || [], entries: [] };
     save(state);
     closeSheet();
     render();
@@ -1154,6 +1308,7 @@ function openSettings() {
 }
 
 document.getElementById("addHours").onclick = () => openHours();
+document.getElementById("addWeek").onclick = () => openWeek();
 document.getElementById("addPay").onclick = () => openPay();
 document.getElementById("addExpense").onclick = () => openExpense();
 document.getElementById("emailReport").onclick = () => openEmail();

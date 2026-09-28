@@ -14,15 +14,31 @@ try {
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   await page.waitForFunction(() => document.querySelector("#cloudStatus")?.textContent === "Saved to cloud");
 
-  await page.getByRole("button", { name: "Log hours", exact: true }).click();
-  await page.locator("#hours").fill("2");
-  await page.locator("#minutes").fill("30");
-  await page.locator("#note").fill("Cloud flow test");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Log week", exact: true }).click();
+  page.once("dialog", dialog => dialog.accept("Site Alpha"));
+  await page.getByRole("button", { name: "Add new job site", exact: true }).click();
+  await page.getByLabel("Monday hours").fill("6.5");
+  await page.getByLabel("Monday job site").selectOption("Site Alpha");
+  await page.getByLabel("Monday note").fill("Weekly cloud test");
+  await page.getByLabel("Tuesday hours").fill("7.25");
+  await page.getByRole("button", { name: "Save week", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector("#cloudStatus")?.textContent === "Saved to cloud");
 
-  await page.getByRole("button", { name: "Log job expense + receipt", exact: true }).click();
+  await page.getByRole("button", { name: "Log week", exact: true }).click();
+  if (await page.getByLabel("Monday hours").inputValue() !== "6.5") throw new Error("Weekly editor did not prefill saved hours.");
+  if (await page.getByLabel("Monday job site").inputValue() !== "Site Alpha") throw new Error("Weekly editor did not preserve the job site.");
+  await page.getByLabel("Monday hours").fill("8");
+  await page.getByLabel("Tuesday hours").fill("");
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Save week", exact: true }).click();
+  const weekRows = await page.locator(".row .meta").allInnerTexts();
+  if (!weekRows.some(text => text.startsWith("8 hrs"))) throw new Error("Weekly editor did not update Monday.");
+  if (weekRows.some(text => text.startsWith("7h 15m"))) throw new Error("Weekly editor did not clear Tuesday.");
+
+  await page.getByRole("button", { name: "Log expense", exact: true }).click();
   await page.locator("#amount").fill("18.75");
   await page.locator("#category").fill("Gas");
+  await page.locator("#jobSite").selectOption("Site Alpha");
   await page.locator("#note").fill("Job site fuel");
   await page.locator("#receiptInput").setInputFiles({
     name: "receipt.png",
@@ -43,12 +59,14 @@ try {
   await viewer.goto(sharedUrl, { waitUntil: "networkidle" });
   await viewer.waitForFunction(() => document.querySelector("#cloudStatus")?.textContent?.startsWith("Read-only cloud report"));
   if (await viewer.getByRole("button", { name: "Log hours", exact: true }).isVisible()) throw new Error("Viewer can see editing controls.");
-  await viewer.getByText("Gas · Receipt attached", { exact: true }).click();
+  await viewer.getByText("Gas · Site Alpha · Receipt attached", { exact: true }).click();
   const downloadHref = await viewer.getByRole("link", { name: "Download receipt", exact: true }).getAttribute("href");
   if (!downloadHref?.startsWith("data:image/jpeg")) throw new Error("Receipt download is not available in the read-only report.");
 
   console.log(JSON.stringify({
     cloudSaved: true,
+    weeklyBulkEdit: true,
+    reusableJobSites: true,
     reportLinkIncluded: true,
     viewerReadOnly: true,
     receiptDownload: true
