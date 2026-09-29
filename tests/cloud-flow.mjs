@@ -11,6 +11,7 @@ const browser = await chromium.launch({
 
 try {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.on("pageerror", error => console.error("PAGE ERROR:", error.message));
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   await page.waitForFunction(() => document.querySelector("#cloudStatus")?.textContent === "Saved to cloud");
 
@@ -78,6 +79,24 @@ try {
   await page.getByRole("button", { name: "Save expense", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("#cloudStatus")?.textContent === "Saved to cloud");
 
+  const overallBalance = await page.locator("#owingAmount").innerText();
+  await page.locator("#filterSite").selectOption("Site Beta");
+  const filteredSites = await page.locator(".row .meta").allInnerTexts();
+  if (!filteredSites.length || filteredSites.some(text => !text.includes("Site Beta"))) throw new Error("Job-site filter returned the wrong entries.");
+  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+  await page.getByLabel("Month", { exact: true }).evaluate(element => {
+    element.value = "2026-09";
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  if (!(await page.locator(".row").count())) throw new Error("Month filter hid matching entries.");
+  await page.getByLabel("Exact day", { exact: true }).evaluate(element => {
+    element.value = "2026-09-30";
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  if (!(await page.getByText("Nothing in this filter.", { exact: true }).isVisible())) throw new Error("Exact-day filter did not filter the activity log.");
+  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+  if (await page.locator("#owingAmount").innerText() !== overallBalance) throw new Error("Activity filters changed the ledger total.");
+
   await page.getByRole("button", { name: "Email or text hours", exact: true }).click();
   await page.locator("#worker").fill("Cloud Test Worker");
   await page.locator("#includePay").check();
@@ -101,6 +120,7 @@ try {
     reusableJobSites: true,
     separateHoursPerJobSite: true,
     conditionalSecondSite: true,
+    activityFilters: true,
     cameraAndExistingReceipt: true,
     reportLinkIncluded: true,
     viewerReadOnly: true,
