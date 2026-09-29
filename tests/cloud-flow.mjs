@@ -46,8 +46,8 @@ try {
   page.once("dialog", dialog => dialog.accept());
   await page.getByRole("button", { name: "Save week", exact: true }).click();
   const weekRows = await page.locator(".row .meta").allInnerTexts();
-  if (!weekRows.some(text => text.startsWith("5 hrs") && text.includes("Site Alpha"))) throw new Error("Weekly editor did not update the first site.");
-  if (!weekRows.some(text => text.startsWith("3 hrs") && text.includes("Site Beta"))) throw new Error("Weekly editor did not update the second site.");
+  if (!weekRows.some(text => text.startsWith("5 hrs") && text.includes("Site Alpha") && text.endsWith("· Submitted"))) throw new Error("Weekly editor did not update the first site or preserve its status.");
+  if (!weekRows.some(text => text.startsWith("3 hrs") && text.includes("Site Beta") && text.endsWith("· Submitted"))) throw new Error("Weekly editor did not update the second site or preserve its status.");
   if (weekRows.some(text => text.startsWith("7h 15m"))) throw new Error("Weekly editor did not clear Tuesday.");
 
   await page.getByRole("button", { name: "Log hours", exact: true }).click();
@@ -61,8 +61,8 @@ try {
   await page.locator("#jobSite2").selectOption("Site Beta");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   const dailyRows = await page.locator(".row .meta").allInnerTexts();
-  if (!dailyRows.some(text => text.startsWith("8 hrs") && text.includes("Site Alpha"))) throw new Error("Daily form did not save first-site hours.");
-  if (!dailyRows.some(text => text.startsWith("2 hrs") && text.includes("Site Beta"))) throw new Error("Daily form did not save second-site hours.");
+  if (!dailyRows.some(text => text.startsWith("8 hrs") && text.includes("Site Alpha") && text.endsWith("· Paid"))) throw new Error("Daily form did not save first-site hours and status.");
+  if (!dailyRows.some(text => text.startsWith("2 hrs") && text.includes("Site Beta") && text.endsWith("· Paid"))) throw new Error("Daily form did not save second-site hours and status.");
 
   await page.getByRole("button", { name: "Log expense", exact: true }).click();
   await page.locator("#amount").fill("18.75");
@@ -80,28 +80,6 @@ try {
   await page.locator("#receiptGallery").setInputFiles(receiptFile);
   await page.getByRole("button", { name: "Save expense", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("#cloudStatus")?.textContent === "Saved to cloud");
-
-  const overallBalance = await page.locator("#owingAmount").innerText();
-  await page.locator("#filterSite").selectOption("Site Beta");
-  const filteredSites = await page.locator(".row .meta").allInnerTexts();
-  if (!filteredSites.length || filteredSites.some(text => !text.includes("Site Beta"))) throw new Error("Job-site filter returned the wrong entries.");
-  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
-  await page.locator("#filterStatus").selectOption("paid");
-  const paidRows = await page.locator(".row .meta").allInnerTexts();
-  if (!paidRows.length || paidRows.some(text => !text.endsWith("· Paid"))) throw new Error("Paid-status filter returned the wrong entries.");
-  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
-  await page.getByLabel("Month", { exact: true }).evaluate(element => {
-    element.value = "2026-09";
-    element.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-  if (!(await page.locator(".row").count())) throw new Error("Month filter hid matching entries.");
-  await page.getByLabel("Exact day", { exact: true }).evaluate(element => {
-    element.value = "2026-09-30";
-    element.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-  if (!(await page.getByText("Nothing in this filter.", { exact: true }).isVisible())) throw new Error("Exact-day filter did not filter the activity log.");
-  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
-  if (await page.locator("#owingAmount").innerText() !== overallBalance) throw new Error("Activity filters changed the ledger total.");
 
   await page.getByRole("button", { name: "Email or text hours", exact: true }).click();
   await page.locator("#worker").fill("Cloud Test Worker");
@@ -126,7 +104,6 @@ try {
     reusableJobSites: true,
     separateHoursPerJobSite: true,
     conditionalSecondSite: true,
-    activityFilters: true,
     submittedPaidStatus: true,
     cameraAndExistingReceipt: true,
     reportLinkIncluded: true,

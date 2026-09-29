@@ -151,20 +151,6 @@
     font-size: 13px;
   }
   .filters button.on { background: var(--ink); color: white; border-color: var(--ink); }
-  .log-filter-fields {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
-    gap: 8px;
-    margin: 0 0 10px;
-    align-items: end;
-  }
-  .log-filter-fields label { margin: 0; font-size: 12px; color: var(--muted); }
-  .log-filter-fields input, .log-filter-fields select { margin-top: 4px; padding: 9px 10px; font-size: 14px; }
-  .log-filter-fields button { min-height: 42px; border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 9px 12px; }
-  @media (max-width: 560px) {
-    .log-filter-fields { grid-template-columns: 1fr 1fr; }
-    .log-filter-fields .site-filter { grid-column: 1 / -1; }
-  }
   .list { display: flex; flex-direction: column; gap: 8px; }
   .row {
     width: 100%;
@@ -302,13 +288,6 @@
       <button type="button" data-filter="expense">Expenses</button>
       <button type="button" data-filter="payment">Payments</button>
     </div>
-  </div>
-  <div class="log-filter-fields" id="logFilterFields">
-    <label>Month<input id="filterMonth" type="month"></label>
-    <label>Exact day<input id="filterDay" type="date"></label>
-    <label class="site-filter">Job site<select id="filterSite"><option value="">All job sites</option></select></label>
-    <label>Status<select id="filterStatus"><option value="">All statuses</option><option value="draft">Draft</option><option value="submitted">Submitted</option><option value="paid">Paid</option></select></label>
-    <button id="clearFilters" type="button">Clear filters</button>
   </div>
   <div class="list" id="list"></div>
 </div>
@@ -672,18 +651,6 @@ function formatHours(entry) {
 let state = load();
 if (isReadOnly) state = blankState();
 let filter = "all";
-let filterMonth = "";
-let filterDay = "";
-let filterSite = "";
-let filterStatus = "";
-
-function refreshLogSiteFilter() {
-  const select = document.getElementById("filterSite");
-  const sites = cleanJobSites([...(state.jobSites || []), ...state.entries.map(entry => entry.jobSite)]);
-  select.innerHTML = '<option value="">All job sites</option>' + sites.map(site => '<option value="' + escapeHtml(site) + '">' + escapeHtml(site) + '</option>').join("");
-  select.value = filterSite;
-  if (select.value !== filterSite) filterSite = "";
-}
 
 function render() {
   const shownEntries = isReadOnly
@@ -721,14 +688,7 @@ function render() {
     run = round2(run + earnedOf(e) + expenseOf(e) - paidOf(e));
     balanceAfter.set(e.id, run);
   }
-  refreshLogSiteFilter();
-  const visible = sorted.filter(e =>
-    (filter === "all" || e.type === filter) &&
-    (!filterMonth || e.date.slice(0, 7) === filterMonth) &&
-    (!filterDay || e.date === filterDay) &&
-    (!filterSite || e.jobSite === filterSite) &&
-    (!filterStatus || (e.type === "hours" && hoursStatus(e) === filterStatus))
-  ).reverse();
+  const visible = sorted.filter(e => filter === "all" || e.type === filter).reverse();
   const list = document.getElementById("list");
   if (!visible.length) {
     list.innerHTML = '<div class="empty">' + (shownEntries.length ? "Nothing in this filter." : isReadOnly ? "No activity in this report period." : "No days or payments yet. Start with the hours from the last day worked.") + "</div>";
@@ -1506,42 +1466,6 @@ document.getElementById("filters").onclick = (ev) => {
   if (!btn) return;
   filter = btn.dataset.filter;
   document.querySelectorAll("#filters button").forEach(b => b.classList.toggle("on", b === btn));
-  render();
-};
-document.getElementById("filterMonth").onchange = (ev) => {
-  filterMonth = ev.target.value;
-  if (filterMonth) {
-    filterDay = "";
-    document.getElementById("filterDay").value = "";
-  }
-  render();
-};
-document.getElementById("filterDay").onchange = (ev) => {
-  filterDay = ev.target.value;
-  if (filterDay) {
-    filterMonth = "";
-    document.getElementById("filterMonth").value = "";
-  }
-  render();
-};
-document.getElementById("filterSite").onchange = (ev) => {
-  filterSite = ev.target.value;
-  render();
-};
-document.getElementById("filterStatus").onchange = (ev) => {
-  filterStatus = ev.target.value;
-  render();
-};
-document.getElementById("clearFilters").onclick = () => {
-  filter = "all";
-  filterMonth = "";
-  filterDay = "";
-  filterSite = "";
-  filterStatus = "";
-  document.getElementById("filterMonth").value = "";
-  document.getElementById("filterDay").value = "";
-  document.getElementById("filterStatus").value = "";
-  document.querySelectorAll("#filters button").forEach(button => button.classList.toggle("on", button.dataset.filter === "all"));
   render();
 };
 document.getElementById("list").onclick = (ev) => {
