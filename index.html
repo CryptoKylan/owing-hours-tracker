@@ -153,7 +153,7 @@
   .filters button.on { background: var(--ink); color: white; border-color: var(--ink); }
   .log-filter-fields {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
     gap: 8px;
     margin: 0 0 10px;
     align-items: end;
@@ -307,6 +307,7 @@
     <label>Month<input id="filterMonth" type="month"></label>
     <label>Exact day<input id="filterDay" type="date"></label>
     <label class="site-filter">Job site<select id="filterSite"><option value="">All job sites</option></select></label>
+    <label>Status<select id="filterStatus"><option value="">All statuses</option><option value="draft">Draft</option><option value="submitted">Submitted</option><option value="paid">Paid</option></select></label>
     <button id="clearFilters" type="button">Clear filters</button>
   </div>
   <div class="list" id="list"></div>
@@ -539,6 +540,12 @@ function hoursLabel(n) {
   if (h === 0) return m + " min";
   return h + "h " + m + "m";
 }
+function hoursStatus(entry) {
+  return entry && (entry.status === "submitted" || entry.status === "paid") ? entry.status : "draft";
+}
+function statusLabel(status) {
+  return status === "submitted" ? "Submitted" : status === "paid" ? "Paid" : "Draft";
+}
 function buildReport(data, from, to, includePay) {
   const inRange = data.entries.filter(e => e.date >= from && e.date <= to);
   const hours = inRange.filter(e => e.type === "hours").sort(byDate);
@@ -554,6 +561,7 @@ function buildReport(data, from, to, includePay) {
       let line = prettyDate(e.date) + " — " + formatHours(e) + " — " + money(earnedOf(e));
       if (e.jobSite) line += " — " + e.jobSite;
       if (e.note) line += " — " + e.note;
+      line += " — " + statusLabel(hoursStatus(e));
       lines.push(line);
     });
     const t = totals(hours);
@@ -667,6 +675,7 @@ let filter = "all";
 let filterMonth = "";
 let filterDay = "";
 let filterSite = "";
+let filterStatus = "";
 
 function refreshLogSiteFilter() {
   const select = document.getElementById("filterSite");
@@ -717,7 +726,8 @@ function render() {
     (filter === "all" || e.type === filter) &&
     (!filterMonth || e.date.slice(0, 7) === filterMonth) &&
     (!filterDay || e.date === filterDay) &&
-    (!filterSite || e.jobSite === filterSite)
+    (!filterSite || e.jobSite === filterSite) &&
+    (!filterStatus || (e.type === "hours" && hoursStatus(e) === filterStatus))
   ).reverse();
   const list = document.getElementById("list");
   if (!visible.length) {
@@ -729,7 +739,7 @@ function render() {
     const isExpense = e.type === "expense";
     const main = isPay ? "Payment received" : isExpense
       ? (e.category || "Job expense") + (e.jobSite ? " · " + e.jobSite : "") + (e.hasReceipt ? " · Receipt attached" : "")
-      : formatHours(e) + " · " + money(Number(e.rate) || state.rate) + "/hr" + (e.jobSite ? " · " + e.jobSite : "");
+      : formatHours(e) + " · " + money(Number(e.rate) || state.rate) + "/hr" + (e.jobSite ? " · " + e.jobSite : "") + " · " + statusLabel(hoursStatus(e));
     const amt = isPay ? "−" + money(paidOf(e)) : isExpense ? "+" + money(expenseOf(e)) : "+" + money(earnedOf(e));
     const note = e.note ? '<div class="note">' + escapeHtml(e.note) + "</div>" : "";
     return '<button class="row" type="button" data-id="' + escapeHtml(e.id) + '">' +
@@ -775,6 +785,7 @@ function openHours(existing) {
     [4, 6, 7.5, 8, 10].map(n => '<button type="button" data-h="' + n + '">' + n + "h</button>").join("") +
     "</div>" +
     '<label for="rate">Rate for this day</label><input id="rate" inputmode="decimal" type="number" min="0" step="0.01" value="' + escapeHtml(e.rate) + '">' +
+    '<label for="hoursStatus">Status</label><select id="hoursStatus"><option value="draft">Draft</option><option value="submitted">Submitted</option><option value="paid">Paid</option></select>' +
     '<label for="jobSite">' + (existing ? "Job site" : "First job site") + '</label><select id="jobSite" class="job-site-select">' + jobSiteOptions(e.jobSite || "") + '</select>' +
     '<div class="chips"><button id="addJobSite" type="button">Add new job site</button></div>' +
     '<label for="note">' + (existing ? "Note (optional)" : "First-site note (optional)") + '</label><textarea id="note" maxlength="240">' + escapeHtml(e.note || "") + "</textarea>" +
@@ -792,6 +803,7 @@ function openHours(existing) {
   const minutes2 = document.getElementById("minutes2");
   const rate = document.getElementById("rate");
   const preview = document.getElementById("preview");
+  document.getElementById("hoursStatus").value = hoursStatus(e);
   const secondBlock = document.getElementById("secondSiteBlock");
   const showSecond = document.getElementById("showSecondSite");
   function updateSecondSiteOption() {
@@ -860,6 +872,7 @@ function openHours(existing) {
       minutes: m,
       rate: round2(r),
       amount: round2((h + m / 60) * r),
+      status: document.getElementById("hoursStatus").value,
       jobSite: firstSite,
       note: document.getElementById("note").value.trim(),
       createdAt: existing ? existing.createdAt : Date.now()
@@ -872,6 +885,7 @@ function openHours(existing) {
       minutes: m2,
       rate: round2(r),
       amount: round2((h2 + m2 / 60) * r),
+      status: document.getElementById("hoursStatus").value,
       jobSite: secondSite,
       note: document.getElementById("note2").value.trim(),
       createdAt: Date.now() + 1
@@ -898,6 +912,7 @@ function openWeek() {
     '<div class="grab"></div><h3>Log a whole week</h3>' +
     '<label for="weekStart">Week containing</label><input id="weekStart" type="date" value="' + initialMonday + '">' +
     '<label for="weekRate">Default rate for new days</label><input id="weekRate" inputmode="decimal" type="number" min="0" step="0.01" value="' + escapeHtml(state.rate) + '">' +
+    '<label for="weekStatus">Status for this week</label><select id="weekStatus"><option value="keep">Keep existing statuses; new hours are Draft</option><option value="draft">Draft</option><option value="submitted">Submitted</option><option value="paid">Paid</option></select>' +
     '<p class="fine">Each day supports two job sites with separate decimal hours and notes. Blank lines are skipped. Existing hours are prefilled; clearing one removes that entry when you save.</p>' +
     '<div class="chips"><button id="addWeekSite" type="button">Add new job site</button></div>' +
     '<div class="week-grid" id="weekGrid"></div>' +
@@ -909,6 +924,7 @@ function openWeek() {
   );
   const weekStart = document.getElementById("weekStart");
   const weekRate = document.getElementById("weekRate");
+  const weekStatus = document.getElementById("weekStatus");
   const grid = document.getElementById("weekGrid");
   const preview = document.getElementById("weekPreview");
   const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -1027,6 +1043,7 @@ function openWeek() {
           minutes: totalMinutes % 60,
           rate: round2(rate),
           amount: round2(totalMinutes / 60 * rate),
+          status: weekStatus.value === "keep" ? hoursStatus(prior) : weekStatus.value,
           jobSite: site,
           note: row.querySelector(".week-note" + block).value.trim(),
           createdAt: prior?.createdAt || Date.now() + block
@@ -1257,6 +1274,7 @@ function openEmail() {
     '<button class="ghost" id="cancel" type="button">Cancel</button>' +
     '<button class="primary" id="sendMail" type="button">Open email</button>' +
     '<button class="primary" id="sendText" type="button">Open text</button>' +
+    '<button class="ghost full" id="markSubmitted" type="button">Mark these hours submitted</button>' +
     '<button class="ghost full" id="copyReport" type="button">Copy report</button>' +
     "</div>"
   );
@@ -1307,6 +1325,21 @@ function openEmail() {
   document.getElementById("worker").addEventListener("input", paint);
   document.getElementById("includePay").addEventListener("change", paint);
   document.getElementById("cancel").onclick = closeSheet;
+  document.getElementById("markSubmitted").onclick = () => {
+    const range = currentRange();
+    if (!range.from || !range.to || range.from > range.to) return alert("Check the dates.");
+    let changed = 0;
+    state.entries = state.entries.map(entry => {
+      if (entry.type !== "hours" || entry.date < range.from || entry.date > range.to || hoursStatus(entry) === "paid") return entry;
+      if (hoursStatus(entry) !== "submitted") changed += 1;
+      return { ...entry, status: "submitted" };
+    });
+    if (!changed) return alert("Those hours are already submitted or paid.");
+    save(state);
+    render();
+    paint();
+    alert(changed + " hour entr" + (changed === 1 ? "y" : "ies") + " marked Submitted.");
+  };
   function remember() {
     const email = document.getElementById("boss").value.trim();
     const name = document.getElementById("worker").value.trim();
@@ -1495,13 +1528,19 @@ document.getElementById("filterSite").onchange = (ev) => {
   filterSite = ev.target.value;
   render();
 };
+document.getElementById("filterStatus").onchange = (ev) => {
+  filterStatus = ev.target.value;
+  render();
+};
 document.getElementById("clearFilters").onclick = () => {
   filter = "all";
   filterMonth = "";
   filterDay = "";
   filterSite = "";
+  filterStatus = "";
   document.getElementById("filterMonth").value = "";
   document.getElementById("filterDay").value = "";
+  document.getElementById("filterStatus").value = "";
   document.querySelectorAll("#filters button").forEach(button => button.classList.toggle("on", button.dataset.filter === "all"));
   render();
 };

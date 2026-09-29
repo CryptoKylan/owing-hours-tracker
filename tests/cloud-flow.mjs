@@ -18,6 +18,7 @@ try {
   await page.getByRole("button", { name: "Log week", exact: true }).click();
   page.once("dialog", dialog => dialog.accept("Site Alpha"));
   await page.getByRole("button", { name: "Add new job site", exact: true }).click();
+  await page.locator("#weekStatus").selectOption("submitted");
   page.once("dialog", dialog => dialog.accept("Site Beta"));
   await page.getByRole("button", { name: "Add new job site", exact: true }).click();
   if (await page.getByLabel("Monday site 2 hours").isVisible()) throw new Error("Weekly second-site fields should start hidden.");
@@ -53,6 +54,7 @@ try {
   if (await page.locator("#hours2").isVisible()) throw new Error("Daily second-site fields should start hidden.");
   await page.locator("#date").fill("2026-09-28");
   await page.getByRole("button", { name: "8h", exact: true }).click();
+  await page.locator("#hoursStatus").selectOption("paid");
   await page.locator("#jobSite").selectOption("Site Alpha");
   await page.getByRole("button", { name: "Add another job site", exact: true }).click();
   await page.locator("#hours2").fill("2");
@@ -83,6 +85,10 @@ try {
   await page.locator("#filterSite").selectOption("Site Beta");
   const filteredSites = await page.locator(".row .meta").allInnerTexts();
   if (!filteredSites.length || filteredSites.some(text => !text.includes("Site Beta"))) throw new Error("Job-site filter returned the wrong entries.");
+  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+  await page.locator("#filterStatus").selectOption("paid");
+  const paidRows = await page.locator(".row .meta").allInnerTexts();
+  if (!paidRows.length || paidRows.some(text => !text.endsWith("· Paid"))) throw new Error("Paid-status filter returned the wrong entries.");
   await page.getByRole("button", { name: "Clear filters", exact: true }).click();
   await page.getByLabel("Month", { exact: true }).evaluate(element => {
     element.value = "2026-09";
@@ -121,6 +127,7 @@ try {
     separateHoursPerJobSite: true,
     conditionalSecondSite: true,
     activityFilters: true,
+    submittedPaidStatus: true,
     cameraAndExistingReceipt: true,
     reportLinkIncluded: true,
     viewerReadOnly: true,
